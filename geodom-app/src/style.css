@@ -1107,6 +1107,11 @@ button {
   color: #40506e;
 }
 
+.editor-sidebar__secondary--positive {
+  background: #deeedf;
+  color: #35724e;
+}
+
 .editor-sidebar__danger {
   display: inline-flex;
   align-items: center;

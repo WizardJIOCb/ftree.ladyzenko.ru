@@ -96,6 +96,22 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
     setZoomPercent(Math.round(flow.getViewport().zoom * 100))
   }
 
+  function getViewportCenterPosition() {
+    if (!flow) {
+      return { x: 420, y: 300 }
+    }
+
+    const centerPoint = flow.screenToFlowPosition({
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2,
+    })
+
+    return {
+      x: Math.round(centerPoint.x - 72),
+      y: Math.round(centerPoint.y - 24),
+    }
+  }
+
   function focusPerson(personId: string, explicitPerson?: TreePerson) {
     const person = explicitPerson ?? persons.find((item) => item.id === personId)
     if (!person) return
@@ -144,7 +160,12 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
     if (!treeId || creatingPerson) return
     setCreatingPerson(true)
     try {
-      const response = await fetch(`/api/trees/${treeId}/persons`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+      const centerPosition = getViewportCenterPosition()
+      const response = await fetch(`/api/trees/${treeId}/persons`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(centerPosition),
+      })
       if (!response.ok) throw new Error('Unable to create person')
       const created = (await response.json()) as TreePerson
       setPersons((current) => [...current, created])

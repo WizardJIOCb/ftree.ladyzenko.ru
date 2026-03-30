@@ -156,7 +156,7 @@ export function PersonListSidebar(props: PersonListSidebarProps) {
               <span>{person.years || person.place || person.branch || 'Без уточнений'}</span>
             </button>
             <div className="editor-person-list__actions">
-              <button className="editor-sidebar__secondary" onClick={() => props.onOpenPerson(person.id)} type="button">Изменить</button>
+              <button className="editor-sidebar__secondary editor-sidebar__secondary--positive" onClick={() => props.onOpenPerson(person.id)} type="button">Изменить</button>
               <button className="editor-sidebar__danger" onClick={() => props.onDeletePerson(person.id)} type="button">Удалить</button>
             </div>
           </div>
