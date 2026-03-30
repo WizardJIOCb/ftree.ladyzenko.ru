@@ -64,6 +64,12 @@ const createRelationshipSchema = z.object({
   kind: z.enum(['parent-child', 'partner']),
 })
 
+const updateRelationshipSchema = z.object({
+  sourceId: z.string().min(1),
+  targetId: z.string().min(1),
+  kind: z.enum(['parent-child', 'partner']),
+})
+
 const layoutSchema = z.object({
   persons: z.array(
     z.object({
@@ -406,6 +412,81 @@ export async function registerTreeRoutes(app: FastifyInstance) {
     return reply.code(201).send(mapRelationship(created))
   })
 
+  app.patch('/api/trees/:treeId/relationships/:relationshipId', async (request, reply) => {
+    const params = relationshipParamsSchema.safeParse(request.params)
+    const body = updateRelationshipSchema.safeParse(request.body)
+
+    if (!params.success || !body.success) {
+      return reply.code(400).send({ ok: false, error: 'Invalid payload' })
+    }
+
+    if (body.data.sourceId === body.data.targetId) {
+      return reply.code(400).send({ ok: false, error: 'Relationship requires two different persons' })
+    }
+
+    const [current] = await db
+      .select()
+      .from(treeRelationships)
+      .where(and(eq(treeRelationships.treeId, params.data.treeId), eq(treeRelationships.id, params.data.relationshipId)))
+      .limit(1)
+
+    if (!current) {
+      return reply.code(404).send({ ok: false, error: 'Relationship not found' })
+    }
+
+    const people = await db
+      .select({ id: treePersons.id })
+      .from(treePersons)
+      .where(and(eq(treePersons.treeId, params.data.treeId), inArray(treePersons.id, [body.data.sourceId, body.data.targetId])))
+
+    if (people.length !== 2) {
+      return reply.code(404).send({ ok: false, error: 'Person not found' })
+    }
+
+    const duplicateCondition =
+      body.data.kind === 'partner'
+        ? or(
+            and(eq(treeRelationships.sourceId, body.data.sourceId), eq(treeRelationships.targetId, body.data.targetId)),
+            and(eq(treeRelationships.sourceId, body.data.targetId), eq(treeRelationships.targetId, body.data.sourceId)),
+          )
+        : and(eq(treeRelationships.sourceId, body.data.sourceId), eq(treeRelationships.targetId, body.data.targetId))
+
+    const [existing] = await db
+      .select()
+      .from(treeRelationships)
+      .where(
+        and(
+          eq(treeRelationships.treeId, params.data.treeId),
+          eq(treeRelationships.kind, body.data.kind),
+          duplicateCondition,
+        ),
+      )
+      .limit(1)
+
+    if (existing && existing.id !== current.id) {
+      return reply.code(409).send({ ok: false, error: 'Relationship already exists' })
+    }
+
+    const [updated] = await db
+      .update(treeRelationships)
+      .set({
+        sourceId: body.data.sourceId,
+        targetId: body.data.targetId,
+        kind: body.data.kind,
+      })
+      .where(and(eq(treeRelationships.treeId, params.data.treeId), eq(treeRelationships.id, params.data.relationshipId)))
+      .returning()
+
+    await db
+      .update(trees)
+      .set({
+        lastUpdated: new Date(),
+      })
+      .where(eq(trees.id, params.data.treeId))
+
+    return mapRelationship(updated)
+  })
+
   app.delete('/api/trees/:treeId/relationships/:relationshipId', async (request, reply) => {
     const params = relationshipParamsSchema.safeParse(request.params)
 
@@ -420,7 +501,7 @@ export async function registerTreeRoutes(app: FastifyInstance) {
       .limit(1)
 
     if (!relationship) {
-      return reply.code(404).send({ ok: false, error: 'Relationship not found' })
+      return { ok: true, missing: true }
     }
 
     await db

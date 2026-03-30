@@ -15,6 +15,7 @@ const NODE_HEIGHT = 48
 export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloadTrees: () => Promise<void> }) {
   const navigate = useNavigate()
   const { treeId = '' } = useParams()
+
   const [flow, setFlow] = useState<ReactFlowInstance | null>(null)
   const [zoomPercent, setZoomPercent] = useState(63)
   const [editorStatus, setEditorStatus] = useState<'loading' | 'ready' | 'error'>('loading')
@@ -29,6 +30,7 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
   const [savingPerson, setSavingPerson] = useState(false)
   const [savingTree, setSavingTree] = useState(false)
   const [linkingRelationship, setLinkingRelationship] = useState(false)
+  const [editingRelationshipId, setEditingRelationshipId] = useState<string | null>(null)
   const [personError, setPersonError] = useState('')
   const [treeError, setTreeError] = useState('')
   const [relationshipError, setRelationshipError] = useState('')
@@ -73,7 +75,9 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
 
       setEditorStatus('loading')
       setSelectedPersonId(null)
+      setEditingRelationshipId(null)
       setIsTreePanelOpen(false)
+      setIsPersonListOpen(false)
 
       try {
         const response = await fetch(`/api/trees/${treeId}/editor`)
@@ -137,6 +141,11 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
   useEffect(() => {
     setTreeForm(currentTree ? { title: currentTree.title, surname: currentTree.surname, privacy: currentTree.privacy } : emptyTreeForm)
   }, [currentTree])
+
+  useEffect(() => {
+    setEditingRelationshipId(null)
+    setRelationshipError('')
+  }, [selectedPersonId])
 
   useEffect(() => {
     setRelationshipForm((current) => ({
@@ -253,6 +262,7 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
     if (!treeId || creatingPerson) return
 
     setCreatingPerson(true)
+    setPersonError('')
 
     try {
       const centerPosition = getViewportCenterPosition()
@@ -301,6 +311,10 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
 
       if (selectedPersonId === personId) {
         setSelectedPersonId(null)
+      }
+
+      if (editingRelationshipId) {
+        setEditingRelationshipId(null)
       }
 
       await reloadTrees()
@@ -358,6 +372,27 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
     }
   }
 
+  function startRelationshipEdit(relationshipId: string) {
+    const connection = selectedConnections.find((item) => item.id === relationshipId)
+    if (!connection) return
+
+    setRelationshipForm({
+      targetId: connection.personId,
+      role: connection.role,
+    })
+    setEditingRelationshipId(relationshipId)
+    setRelationshipError('')
+  }
+
+  function cancelRelationshipEdit() {
+    setEditingRelationshipId(null)
+    setRelationshipError('')
+    setRelationshipForm((current) => ({
+      role: current.role,
+      targetId: relationshipTargets[0]?.id ?? '',
+    }))
+  }
+
   async function createRelationship() {
     if (!treeId || !selectedPerson || !relationshipForm.targetId || linkingRelationship) return
 
@@ -372,19 +407,29 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
             ? { sourceId: selectedPerson.id, targetId: relationshipForm.targetId, kind: 'parent-child' as const }
             : { sourceId: selectedPerson.id, targetId: relationshipForm.targetId, kind: 'partner' as const }
 
-      const response = await fetch(`/api/trees/${treeId}/relationships`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
+      const response = await fetch(
+        editingRelationshipId ? `/api/trees/${treeId}/relationships/${editingRelationshipId}` : `/api/trees/${treeId}/relationships`,
+        {
+          method: editingRelationshipId ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        },
+      )
 
-      if (!response.ok) throw new Error('Unable to create relationship')
+      if (!response.ok) throw new Error('Unable to save relationship')
 
-      const created = (await response.json()) as TreeEditorRelationship
-      setRelationships((current) => [...current, created])
+      const saved = (await response.json()) as TreeEditorRelationship
+      setRelationships((current) =>
+        editingRelationshipId ? current.map((item) => (item.id === saved.id ? saved : item)) : [...current, saved],
+      )
+      setEditingRelationshipId(null)
       await reloadTrees()
     } catch {
-      setRelationshipError('Связь уже существует или не может быть создана.')
+      setRelationshipError(
+        editingRelationshipId
+          ? 'Не удалось обновить связь. Проверьте выбранную персону и тип связи.'
+          : 'Связь уже существует или не может быть создана.',
+      )
     } finally {
       setLinkingRelationship(false)
     }
@@ -407,6 +452,9 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
       if (!response.ok) throw new Error('Unable to delete relationship')
 
       setRelationships((current) => current.filter((item) => item.id !== relationshipId))
+      if (editingRelationshipId === relationshipId) {
+        cancelRelationshipEdit()
+      }
       await reloadTrees()
     } catch {
       setRelationshipError('Не удалось удалить связь.')
@@ -557,6 +605,7 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
             personError={personError}
             relationshipError={relationshipError}
             linkingRelationship={linkingRelationship}
+            editingRelationshipId={editingRelationshipId}
             relationshipTargets={relationshipTargets}
             relationshipForm={relationshipForm}
             selectedConnections={selectedConnections}
@@ -567,6 +616,8 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
             onCreateRelationship={() => void createRelationship()}
             onDeletePerson={() => void deletePerson(selectedPerson.id)}
             onOpenConnectedPerson={(personId) => focusPerson(personId, undefined, true)}
+            onStartRelationshipEdit={startRelationshipEdit}
+            onCancelRelationshipEdit={cancelRelationshipEdit}
             onDeleteRelationship={(relationshipId) => void deleteRelationship(relationshipId)}
           />
         )}

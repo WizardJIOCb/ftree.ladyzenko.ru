@@ -11,6 +11,7 @@ type PersonSidebarProps = {
   personError: string
   relationshipError: string
   linkingRelationship: boolean
+  editingRelationshipId: string | null
   relationshipTargets: TreePerson[]
   relationshipForm: { targetId: string; role: RelationshipRole }
   selectedConnections: Array<{
@@ -27,6 +28,8 @@ type PersonSidebarProps = {
   onCreateRelationship: () => void
   onDeletePerson: () => void
   onOpenConnectedPerson: (personId: string) => void
+  onStartRelationshipEdit: (relationshipId: string) => void
+  onCancelRelationshipEdit: () => void
   onDeleteRelationship: (relationshipId: string) => void
 }
 
@@ -102,7 +105,9 @@ export function PersonSidebar(props: PersonSidebarProps) {
           <button className="editor-sidebar__save" disabled={props.savingPerson} onClick={props.onSavePerson} type="button">
             {props.savingPerson ? 'Сохраняем...' : 'Сохранить персону'}
           </button>
-          <button className="editor-sidebar__danger" onClick={props.onDeletePerson} type="button">Удалить</button>
+          <button className="editor-sidebar__danger" onClick={props.onDeletePerson} type="button">
+            Удалить
+          </button>
         </div>
       </div>
 
@@ -134,15 +139,23 @@ export function PersonSidebar(props: PersonSidebarProps) {
         </label>
 
         {props.relationshipError && <p className="editor-sidebar__error">{props.relationshipError}</p>}
+        {props.editingRelationshipId && <p className="editor-sidebar__hint">Редактируется существующая связь. После сохранения запись обновится.</p>}
 
-        <button className="editor-sidebar__secondary" disabled={!props.relationshipForm.targetId || props.linkingRelationship} onClick={props.onCreateRelationship} type="button">
-          {props.linkingRelationship ? 'Создаём...' : 'Добавить связь'}
-        </button>
+        <div className="editor-sidebar__actions">
+          <button className="editor-sidebar__secondary" disabled={!props.relationshipForm.targetId || props.linkingRelationship} onClick={props.onCreateRelationship} type="button">
+            {props.linkingRelationship ? 'Сохраняем...' : props.editingRelationshipId ? 'Сохранить связь' : 'Добавить связь'}
+          </button>
+          {props.editingRelationshipId && (
+            <button className="editor-sidebar__ghost" onClick={props.onCancelRelationshipEdit} type="button">
+              Отмена
+            </button>
+          )}
+        </div>
 
         <div className="editor-link-list">
           {props.selectedConnections.length === 0 && <p className="editor-sidebar__hint">Пока нет связанных персон.</p>}
           {props.selectedConnections.map((item) => (
-            <div key={item.id} className="editor-link-list__item">
+            <div key={item.id} className={`editor-link-list__item${props.editingRelationshipId === item.id ? ' is-editing' : ''}`}>
               <span>
                 {item.role === 'partner' && 'Партнёр'}
                 {item.role === 'parent' && 'Родитель'}
@@ -152,6 +165,9 @@ export function PersonSidebar(props: PersonSidebarProps) {
               <div className="editor-link-list__actions">
                 <button className="editor-link-list__button" onClick={() => props.onOpenConnectedPerson(item.personId)} type="button">
                   К персоне
+                </button>
+                <button className="editor-link-list__button editor-link-list__button--positive" onClick={() => props.onStartRelationshipEdit(item.id)} type="button">
+                  Изменить
                 </button>
                 <button className="editor-link-list__button editor-link-list__button--danger" onClick={() => props.onDeleteRelationship(item.id)} type="button">
                   Удалить связь
