@@ -28,6 +28,11 @@ import {
 const compactNodeTypes = { compactPerson: CompactPersonNode }
 const relationshipEdgeTypes = { relationshipEdge: RelationshipEdge }
 const EDITOR_VIEW_SETTINGS_KEY = 'ftree-editor-view-settings'
+const MOBILE_TOUCH_MOVE_THRESHOLD = 8
+const MIN_ZOOM = 0.3
+const MAX_ZOOM = 1.7
+const MOBILE_INITIAL_ZOOM = 0.9
+type TouchPointLike = { clientX: number; clientY: number }
 
 function normalizeSearchText(value: string) {
   return value
@@ -49,6 +54,7 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
   const [persons, setPersons] = useState<TreePerson[]>([])
   const [relationships, setRelationships] = useState<TreeEditorRelationship[]>([])
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null)
+  const [isPersonEditorOpen, setIsPersonEditorOpen] = useState(false)
   const [pulsingPersonId, setPulsingPersonId] = useState<string | null>(null)
   const [selectedRelationshipId, setSelectedRelationshipId] = useState<string | null>(null)
   const [returnToRelationshipId, setReturnToRelationshipId] = useState<string | null>(null)
@@ -139,8 +145,48 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
   const pulsingPersonTimeoutRef = useRef<number | null>(null)
   const selectedPersonIdRef = useRef<string | null>(null)
   const personFormOwnerIdRef = useRef<string | null>(null)
+  const touchGestureRef = useRef<
+    | {
+        mode: 'pan' | 'pinch'
+        startViewport: { x: number; y: number; zoom: number }
+        startPoint?: { x: number; y: number }
+        startDistance?: number
+        startFlowPoint?: { x: number; y: number }
+        edgeId?: string | null
+        moved: boolean
+      }
+    | null
+  >(null)
+  const mobileNodeGestureRef = useRef<
+    | {
+        personId: string
+        startPoint: { x: number; y: number }
+        startFlowPoint: { x: number; y: number }
+        startPerson: { x: number; y: number }
+        lastPosition: { x: number; y: number }
+        moved: boolean
+      }
+    | null
+  >(null)
+  const [isCoarsePointer, setIsCoarsePointer] = useState(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
+    return window.matchMedia('(pointer: coarse)').matches
+  })
   const nodes = useMemo(
-    () => createEditorNodes(previewPersons, selectedPersonId, pulsingPersonId, visualMode, generationByPerson, viewSettings.autoColorNodes),
+    () =>
+      createEditorNodes(
+        previewPersons,
+        selectedPersonId,
+        pulsingPersonId,
+        visualMode,
+        generationByPerson,
+        viewSettings.autoColorNodes,
+        {
+          onStart: handleMobileNodeTouchStart,
+          onMove: handleMobileNodeTouchMove,
+          onEnd: handleMobileNodeTouchEnd,
+        },
+      ),
     [generationByPerson, previewPersons, pulsingPersonId, selectedPersonId, viewSettings.autoColorNodes, visualMode],
   )
   const edges = useMemo(
@@ -205,6 +251,7 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
 
       setEditorStatus('loading')
       setSelectedPersonId(null)
+      setIsPersonEditorOpen(false)
       setSelectedRelationshipId(null)
       setReturnToRelationshipId(null)
       setRelationshipReturnViewport(null)
@@ -326,6 +373,22 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
     window.localStorage.setItem(EDITOR_VIEW_SETTINGS_KEY, JSON.stringify(viewSettings))
   }, [viewSettings])
 
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+
+    const mediaQuery = window.matchMedia('(pointer: coarse)')
+    const updatePointerMode = () => setIsCoarsePointer(mediaQuery.matches)
+
+    updatePointerMode()
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', updatePointerMode)
+      return () => mediaQuery.removeEventListener('change', updatePointerMode)
+    }
+
+    mediaQuery.addListener(updatePointerMode)
+    return () => mediaQuery.removeListener(updatePointerMode)
+  }, [])
+
   useEffect(
     () => () => {
       if (pulsingPersonTimeoutRef.current !== null) {
@@ -340,6 +403,203 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
   function syncZoom() {
     if (!flow) return
     setZoomPercent(Math.round(flow.getViewport().zoom * 100))
+  }
+
+  function clampZoom(value: number) {
+    return Math.min(Math.max(value, MIN_ZOOM), MAX_ZOOM)
+  }
+
+  function getTouchPoint(touch: TouchPointLike) {
+    return { x: touch.clientX, y: touch.clientY }
+  }
+
+  function getTouchDistance(first: TouchPointLike, second: TouchPointLike) {
+    return Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY)
+  }
+
+  function getTouchMidpoint(first: TouchPointLike, second: TouchPointLike) {
+    return {
+      x: (first.clientX + second.clientX) / 2,
+      y: (first.clientY + second.clientY) / 2,
+    }
+  }
+
+  function beginCanvasTouchGesture(event: React.TouchEvent<HTMLDivElement>) {
+    if (!isCoarsePointer || !flow) return
+
+    const target = event.target instanceof HTMLElement ? event.target : null
+    if (target?.closest('.editor-sidebar, .editor-status-card, .editor-settings-backdrop')) {
+      touchGestureRef.current = null
+      return
+    }
+
+    if (target?.closest('.react-flow__node')) {
+      touchGestureRef.current = null
+      return
+    }
+
+    if (event.touches.length >= 2) {
+      const first = event.touches[0]
+      const second = event.touches[1]
+      const midpoint = getTouchMidpoint(first, second)
+      touchGestureRef.current = {
+        mode: 'pinch',
+        startViewport: flow.getViewport(),
+        startDistance: Math.max(getTouchDistance(first, second), 1),
+        startFlowPoint: flow.screenToFlowPosition(midpoint),
+        moved: true,
+      }
+      return
+    }
+
+    if (event.touches.length !== 1) return
+
+    const edgeElement = target?.closest('.react-flow__edge')
+    touchGestureRef.current = {
+      mode: 'pan',
+      startViewport: flow.getViewport(),
+      startPoint: getTouchPoint(event.touches[0]),
+      edgeId: edgeElement?.getAttribute('data-id'),
+      moved: false,
+    }
+  }
+
+  function moveCanvasTouchGesture(event: React.TouchEvent<HTMLDivElement>) {
+    if (!isCoarsePointer || !flow || !touchGestureRef.current) return
+
+    const gesture = touchGestureRef.current
+
+    if (gesture.mode === 'pinch') {
+      if (event.touches.length < 2 || !gesture.startDistance || !gesture.startFlowPoint) return
+
+      const first = event.touches[0]
+      const second = event.touches[1]
+      const midpoint = getTouchMidpoint(first, second)
+      const distance = Math.max(getTouchDistance(first, second), 1)
+      const zoom = clampZoom(gesture.startViewport.zoom * (distance / gesture.startDistance))
+
+      gesture.moved = true
+      void flow.setViewport({
+        x: midpoint.x - gesture.startFlowPoint.x * zoom,
+        y: midpoint.y - gesture.startFlowPoint.y * zoom,
+        zoom,
+      })
+      return
+    }
+
+    if (event.touches.length === 0 || !gesture.startPoint) return
+
+    const current = getTouchPoint(event.touches[0])
+    const deltaX = current.x - gesture.startPoint.x
+    const deltaY = current.y - gesture.startPoint.y
+
+    if (!gesture.moved && Math.hypot(deltaX, deltaY) < MOBILE_TOUCH_MOVE_THRESHOLD) {
+      return
+    }
+
+    gesture.moved = true
+    void flow.setViewport({
+      x: gesture.startViewport.x + deltaX,
+      y: gesture.startViewport.y + deltaY,
+      zoom: gesture.startViewport.zoom,
+    })
+  }
+
+  function endCanvasTouchGesture() {
+    if (!isCoarsePointer) return
+
+    const gesture = touchGestureRef.current
+    touchGestureRef.current = null
+
+    if (!gesture) return
+    if (!gesture.moved && gesture.edgeId) {
+      openRelationshipSidebar(gesture.edgeId)
+      return
+    }
+
+    if (gesture.moved) {
+      syncZoom()
+    }
+  }
+
+  function handleMobileNodeTouchStart(personId: string, event: React.TouchEvent<HTMLDivElement>) {
+    if (!isCoarsePointer || !flow || event.touches.length !== 1) return
+
+    const person = persons.find((item) => item.id === personId)
+    if (!person) return
+
+    const touch = event.touches[0]
+    mobileNodeGestureRef.current = {
+      personId,
+      startPoint: getTouchPoint(touch),
+      startFlowPoint: flow.screenToFlowPosition(getTouchPoint(touch)),
+      startPerson: { x: person.x, y: person.y },
+      lastPosition: { x: person.x, y: person.y },
+      moved: false,
+    }
+
+    setSelectedPersonId(personId)
+    setIsPersonEditorOpen(false)
+    setSelectedRelationshipId(null)
+    setIsTreePanelOpen(false)
+    setIsPersonListOpen(false)
+    event.stopPropagation()
+  }
+
+  function handleMobileNodeTouchMove(personId: string, event: React.TouchEvent<HTMLDivElement>) {
+    if (!isCoarsePointer || !flow || event.touches.length !== 1) return
+
+    const gesture = mobileNodeGestureRef.current
+    if (!gesture || gesture.personId !== personId) return
+
+    const touch = event.touches[0]
+    const currentPoint = getTouchPoint(touch)
+    const currentFlowPoint = flow.screenToFlowPosition(currentPoint)
+    const deltaX = currentPoint.x - gesture.startPoint.x
+    const deltaY = currentPoint.y - gesture.startPoint.y
+
+    if (!gesture.moved && Math.hypot(deltaX, deltaY) < MOBILE_TOUCH_MOVE_THRESHOLD) {
+      event.stopPropagation()
+      return
+    }
+
+    const nextPosition = {
+      x: Math.round(gesture.startPerson.x + (currentFlowPoint.x - gesture.startFlowPoint.x)),
+      y: Math.round(gesture.startPerson.y + (currentFlowPoint.y - gesture.startFlowPoint.y)),
+    }
+
+    gesture.moved = true
+    gesture.lastPosition = nextPosition
+    setPersons((current) =>
+      current.map((person) => (person.id === personId ? { ...person, x: nextPosition.x, y: nextPosition.y } : person)),
+    )
+    event.stopPropagation()
+  }
+
+  function handleMobileNodeTouchEnd(personId: string, event: React.TouchEvent<HTMLDivElement>) {
+    if (!isCoarsePointer) return
+
+    const gesture = mobileNodeGestureRef.current
+    mobileNodeGestureRef.current = null
+    if (!gesture || gesture.personId !== personId) return
+
+    if (gesture.moved) {
+      setSelectedPersonId(personId)
+      setIsPersonEditorOpen(false)
+      setSelectedRelationshipId(null)
+      setIsTreePanelOpen(false)
+      setIsPersonListOpen(false)
+    } else if (selectedPersonId === personId && !isPersonEditorOpen) {
+      setIsPersonEditorOpen(true)
+    } else {
+      setSelectedPersonId(personId)
+      setIsPersonEditorOpen(false)
+      setSelectedRelationshipId(null)
+      setIsTreePanelOpen(false)
+      setIsPersonListOpen(false)
+    }
+
+    event.stopPropagation()
   }
 
   function pulsePerson(personId: string) {
@@ -377,7 +637,28 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
       { duration: 260, padding: 0.1 },
     )
 
-    window.setTimeout(syncZoom, 320)
+    window.setTimeout(() => {
+      if (!flow) return
+
+      if (isCoarsePointer && flow.getZoom() < MOBILE_INITIAL_ZOOM) {
+        const boundsCenterX = minX + (maxX - minX) / 2
+        const boundsCenterY = minY + (maxY - minY) / 2
+        const nextZoom = MOBILE_INITIAL_ZOOM
+
+        void flow.setViewport(
+          {
+            x: window.innerWidth / 2 - boundsCenterX * nextZoom,
+            y: window.innerHeight / 2 - boundsCenterY * nextZoom,
+            zoom: nextZoom,
+          },
+          { duration: 180 },
+        )
+        window.setTimeout(syncZoom, 220)
+        return
+      }
+
+      syncZoom()
+    }, 320)
   }
 
   function getViewportCenterPosition() {
@@ -404,13 +685,16 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
 
     if (options?.openEditor) {
       setSelectedPersonId(personId)
+      setIsPersonEditorOpen(true)
       setIsPersonListOpen(false)
     } else if (options?.keepPersonList) {
-      setSelectedPersonId(null)
+      setSelectedPersonId(personId)
+      setIsPersonEditorOpen(false)
       setIsPersonListOpen(true)
       pulsePerson(personId)
     } else {
-      setSelectedPersonId(null)
+      setSelectedPersonId(personId)
+      setIsPersonEditorOpen(false)
       setIsPersonListOpen(false)
     }
 
@@ -434,11 +718,12 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
 
     setSearchQuery('')
     setSelectedRelationshipId(null)
-    centerPerson(personId, person, { openEditor: true })
+    centerPerson(personId, person, isCoarsePointer ? { openEditor: false, keepPersonList: false } : { openEditor: true })
   }
 
   function openRelationshipSidebar(relationshipId: string) {
     setSelectedPersonId(null)
+    setIsPersonEditorOpen(false)
     setSelectedRelationshipId(relationshipId)
     setReturnToRelationshipId(null)
     setRelationshipReturnViewport(null)
@@ -455,6 +740,7 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
       }
     }
     setSelectedRelationshipId(null)
+    setIsPersonEditorOpen(true)
     focusPerson(personId, undefined, true)
   }
 
@@ -463,6 +749,7 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
 
     const relationshipId = returnToRelationshipId
     setSelectedPersonId(null)
+    setIsPersonEditorOpen(false)
     setSelectedRelationshipId(relationshipId)
     setReturnToRelationshipId(null)
     setIsTreePanelOpen(false)
@@ -487,32 +774,6 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
     })
   }
 
-  async function persistPersonPosition(personId: string, x: number, y: number) {
-    if (!treeId) return
-
-    try {
-      await fetch(`/api/trees/${treeId}/persons/${personId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ x: Math.round(x), y: Math.round(y) }),
-      })
-      void reloadTrees()
-    } catch {}
-  }
-
-  async function persistLayout(nextPersons: TreePerson[]) {
-    if (!treeId) return
-
-    try {
-      await fetch(`/api/trees/${treeId}/layout`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ persons: extractLayout(nextPersons) }),
-      })
-      void reloadTrees()
-    } catch {}
-  }
-
   async function addCompactPerson() {
     if (!treeId || creatingPerson) return
 
@@ -532,6 +793,7 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
       const created = (await response.json()) as TreePerson
       setPersons((current) => [...current, created])
       setSelectedPersonId(created.id)
+      setIsPersonEditorOpen(true)
       setIsTreePanelOpen(false)
       setIsPersonListOpen(false)
       setSearchQuery('')
@@ -567,6 +829,7 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
 
       if (selectedPersonId === personId) {
         setSelectedPersonId(null)
+        setIsPersonEditorOpen(false)
       }
 
       if (editingRelationshipId) {
@@ -685,6 +948,14 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
       })
 
       if (!response.ok) throw new Error('Unable to save tree')
+
+      const layoutResponse = await fetch(`/api/trees/${treeId}/layout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ persons: extractLayout(persons) }),
+      })
+
+      if (!layoutResponse.ok) throw new Error('Unable to save tree layout')
 
       setEditorTree((await response.json()) as TreeSummary)
       await reloadTrees()
@@ -896,7 +1167,6 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
     })
 
     setPersons(nextPersons)
-    void persistLayout(nextPersons)
     setShouldFitView(true)
   }
 
@@ -913,11 +1183,26 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
       setSelectedPersonId(null)
       setIsPersonListOpen(false)
       setIsTreePanelOpen(false)
-      await persistLayout(nextPersons)
       setShouldFitView(true)
     } finally {
       setAutoLayouting(false)
     }
+  }
+
+  function openSettingsPanel() {
+    setIsTreePanelOpen(false)
+    setIsPersonListOpen(false)
+    setIsPersonEditorOpen(false)
+    setSelectedRelationshipId(null)
+    setIsSettingsOpen(true)
+  }
+
+  function toggleTreePanel() {
+    setSelectedPersonId(null)
+    setIsPersonEditorOpen(false)
+    setSelectedRelationshipId(null)
+    setIsPersonListOpen(false)
+    setIsTreePanelOpen((current) => !current)
   }
 
   return (
@@ -1047,43 +1332,42 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
               </div>
             )}
           </div>
+
+          <div className="editor-mobile-actions">
+            <button className="floating-action" onClick={openSettingsPanel} type="button">
+              <TuneIcon />
+              <span>{'\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438'}</span>
+            </button>
+            <button className="floating-action" onClick={toggleTreePanel} type="button">
+              <GearIcon />
+              <span>{'\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044f'}</span>
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="editor-top editor-top--right">
-        <button
-          className="floating-action"
-          onClick={() => {
-            setIsTreePanelOpen(false)
-            setIsPersonListOpen(false)
-            setSelectedRelationshipId(null)
-            setIsSettingsOpen(true)
-          }}
-          type="button"
-        >
+        <button className="floating-action" onClick={openSettingsPanel} type="button">
           <TuneIcon />
           <span>Настройки</span>
         </button>
-        <button
-          className="floating-action"
-          onClick={() => {
-            setSelectedPersonId(null)
-            setSelectedRelationshipId(null)
-            setIsPersonListOpen(false)
-            setIsTreePanelOpen((current) => !current)
-          }}
-          type="button"
-        >
+        <button className="floating-action" onClick={toggleTreePanel} type="button">
           <GearIcon />
           <span>Действия</span>
         </button>
       </div>
 
-      <div className="editor-canvas">
+      <div
+        className="editor-canvas"
+        onTouchStartCapture={beginCanvasTouchGesture}
+        onTouchMoveCapture={moveCanvasTouchGesture}
+        onTouchEndCapture={endCanvasTouchGesture}
+        onTouchCancelCapture={endCanvasTouchGesture}
+      >
         <ReactFlow
           fitView
-          minZoom={0.3}
-          maxZoom={1.7}
+          minZoom={MIN_ZOOM}
+          maxZoom={MAX_ZOOM}
           nodes={nodes}
           edges={edges}
           nodeTypes={compactNodeTypes}
@@ -1091,28 +1375,36 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
           onInit={setFlow}
           onMoveEnd={syncZoom}
           onNodeDragStart={(_, node) => {
+            if (isCoarsePointer) return
             setSelectedPersonId(node.id)
+            setIsPersonEditorOpen(false)
             setSelectedRelationshipId(null)
             setIsTreePanelOpen(false)
             setIsPersonListOpen(false)
           }}
           onNodeClick={(_, node) => {
+            if (isCoarsePointer) return
             setSelectedPersonId(node.id)
+            setIsPersonEditorOpen(true)
             setSelectedRelationshipId(null)
             setIsTreePanelOpen(false)
             setIsPersonListOpen(false)
           }}
           onEdgeClick={(_, edge) => openRelationshipSidebar(edge.id)}
-          onNodeDragStop={(_, node) => void persistPersonPosition(node.id, node.position.x, node.position.y)}
           onNodesChange={updatePersonPositions}
           onPaneClick={() => {
             setSelectedPersonId(null)
+            setIsPersonEditorOpen(false)
             setSelectedRelationshipId(null)
             setIsPersonListOpen(false)
           }}
-          nodesDraggable
-          panOnDrag
-          zoomOnScroll
+          nodeDragThreshold={0}
+          connectionDragThreshold={9999}
+          nodesDraggable={!isCoarsePointer}
+          nodesConnectable={false}
+          panOnDrag={!isCoarsePointer}
+          zoomOnScroll={!isCoarsePointer}
+          zoomOnPinch={!isCoarsePointer}
           proOptions={{ hideAttribution: true }}
         >
           <Background color="#e0cdbb" gap={18} size={1.2} variant={BackgroundVariant.Dots} />
@@ -1125,7 +1417,7 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
           </div>
         )}
 
-        {selectedPerson && (
+        {selectedPerson && isPersonEditorOpen && (
           <PersonSidebar
             key={selectedPerson.id}
             selectedPerson={selectedPerson}
@@ -1138,7 +1430,10 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
             relationshipTargets={relationshipTargets}
             relationshipForm={relationshipForm}
             selectedConnections={selectedConnections}
-            onClose={() => setSelectedPersonId(null)}
+            onClose={() => {
+              setSelectedPersonId(null)
+              setIsPersonEditorOpen(false)
+            }}
             onReturnToRelationship={returnToRelationshipId ? returnToRelationship : undefined}
             onPersonFormChange={(patch) => setPersonForm((current) => ({ ...current, ...patch }))}
             onCommitPersonColors={(personId, patch) => void commitPersonColors(personId, patch)}

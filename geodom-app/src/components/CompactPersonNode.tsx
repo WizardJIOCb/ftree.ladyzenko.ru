@@ -12,6 +12,9 @@ export type CompactPersonNodeData = {
   panelColor?: string
   textColor?: string
   accentColor?: string
+  onMobileTouchStart?: (personId: string, event: React.TouchEvent<HTMLDivElement>) => void
+  onMobileTouchMove?: (personId: string, event: React.TouchEvent<HTMLDivElement>) => void
+  onMobileTouchEnd?: (personId: string, event: React.TouchEvent<HTMLDivElement>) => void
 }
 
 const accentClassName: Record<CompactPersonNodeData['accent'], string> = {
@@ -21,8 +24,10 @@ const accentClassName: Record<CompactPersonNodeData['accent'], string> = {
 }
 
 export const CompactPersonNode = memo(function CompactPersonNode({
+  id,
   data,
 }: {
+  id: string
   data: CompactPersonNodeData
 }) {
   const toneClassName = data.visualMode === 'era' ? ` modern-node--era-${data.toneIndex ?? 0}` : ''
@@ -37,8 +42,12 @@ export const CompactPersonNode = memo(function CompactPersonNode({
 
   return (
     <div
-      className={`modern-node ${accentClassName[data.accent]}${toneClassName}${data.selected ? ' is-selected' : ''}${data.pulsing ? ' is-pulsing' : ''}`}
+      className={`modern-node nopan ${accentClassName[data.accent]}${toneClassName}${data.selected ? ' is-selected' : ''}${data.pulsing ? ' is-pulsing' : ''}`}
       style={inlineStyle}
+      onTouchStart={(event) => data.onMobileTouchStart?.(id, event)}
+      onTouchMove={(event) => data.onMobileTouchMove?.(id, event)}
+      onTouchEnd={(event) => data.onMobileTouchEnd?.(id, event)}
+      onTouchCancel={(event) => data.onMobileTouchEnd?.(id, event)}
     >
       <Handle className="modern-node__handle" type="target" position={Position.Top} />
       <Handle className="modern-node__handle" type="source" position={Position.Bottom} />

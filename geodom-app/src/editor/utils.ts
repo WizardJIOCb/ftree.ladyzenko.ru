@@ -1,4 +1,5 @@
 import { MarkerType, Position, type Edge, type Node } from '@xyflow/react'
+import type { TouchEvent } from 'react'
 
 import type { CompactPersonNodeData } from '../components/CompactPersonNode'
 import type { TreeEditorRelationship, TreePerson, TreeSummary } from '../types'
@@ -876,11 +877,17 @@ export function createEditorNodes(
   visualMode: EditorVisualMode = 'accent',
   generationByPerson: Map<string, number> = new Map(),
   autoColorNodes = false,
+  mobileNodeTouchHandlers?: {
+    onStart?: (personId: string, event: TouchEvent<HTMLDivElement>) => void
+    onMove?: (personId: string, event: TouchEvent<HTMLDivElement>) => void
+    onEnd?: (personId: string, event: TouchEvent<HTMLDivElement>) => void
+  },
 ): Node<CompactPersonNodeData>[] {
   return persons.map((person) => ({
     id: person.id,
     type: 'compactPerson',
     position: { x: person.x, y: person.y },
+    dragHandle: '.modern-node',
     zIndex: person.id === selectedPersonId ? 50 : person.id === pulsingPersonId ? 40 : 1,
     initialWidth: EDITOR_NODE_WIDTH,
     initialHeight: EDITOR_NODE_HEIGHT,
@@ -913,6 +920,9 @@ export function createEditorNodes(
       selected: person.id === selectedPersonId,
       pulsing: person.id === pulsingPersonId,
       visualMode,
+      onMobileTouchStart: mobileNodeTouchHandlers?.onStart,
+      onMobileTouchMove: mobileNodeTouchHandlers?.onMove,
+      onMobileTouchEnd: mobileNodeTouchHandlers?.onEnd,
       ...resolveNodeAppearance(person, generationByPerson.get(person.id) ?? 0, visualMode, autoColorNodes),
     },
   }))

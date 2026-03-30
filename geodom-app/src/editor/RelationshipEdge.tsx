@@ -112,6 +112,7 @@ export function RelationshipEdge({
         }}
       />
       <path
+        className="relationship-edge__hitbox"
         d={edgePath}
         fill="none"
         stroke="transparent"

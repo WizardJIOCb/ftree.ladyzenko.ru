@@ -753,10 +753,18 @@ button {
   inset: 0;
 }
 
+.editor-canvas--touch-pan {
+  touch-action: none;
+}
+
+.editor-mobile-actions {
+  display: none;
+}
+
 .editor-top,
 .editor-corner {
   position: absolute;
-  z-index: 5;
+  z-index: 12;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -797,6 +805,8 @@ button {
 
 .editor-title {
   position: static;
+  position: relative;
+  z-index: 13;
   margin-top: 2px;
   text-align: center;
   color: rgba(39, 48, 78, 0.58);
@@ -1139,6 +1149,14 @@ button {
   border-radius: 999px;
   background: #eef3f8;
   color: #95a4b9;
+}
+
+.modern-node__avatar,
+.modern-node__label,
+.modern-node__status {
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .modern-node__avatar svg {
@@ -1765,17 +1783,30 @@ button {
     padding-right: 18px;
   }
 
+  .editor-top--left {
+    top: 10px;
+    left: 12px;
+  }
+
   .editor-top--center {
-    left: 18px;
-    right: 18px;
+    top: 48px;
+    left: 12px;
+    right: 12px;
     transform: none;
-    justify-content: center;
+    justify-content: stretch;
   }
 
   .floating-toolbar {
     width: 100%;
-    flex-wrap: wrap;
-    justify-content: center;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .floating-toolbar::-webkit-scrollbar {
+    display: none;
   }
 
   .editor-toolbar-stack,
@@ -1783,10 +1814,116 @@ button {
     width: 100%;
   }
 
+  .editor-toolbar-stack {
+    gap: 8px;
+    align-items: stretch;
+  }
+
+  .editor-top--right {
+    display: none;
+  }
+
+  .editor-mobile-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+
+  .editor-mobile-actions .floating-action {
+    width: 100%;
+    min-width: 0;
+    min-height: 38px;
+    padding: 0 10px;
+    border-radius: 12px;
+    font-size: 13px;
+  }
+
+  .floating-button,
+  .floating-action {
+    min-height: 38px;
+  }
+
+  .floating-button {
+    width: 38px;
+  }
+
+  .floating-toolbar button {
+    min-height: 38px;
+    padding: 0 11px;
+    font-size: 13px;
+  }
+
+  .editor-search input {
+    height: 40px;
+    font-size: 16px;
+  }
+
+  .editor-title {
+    width: min(240px, calc(100vw - 24px));
+    margin: 14px auto 6px;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .editor-status-card {
+    top: 226px;
+    left: 12px;
+    right: 12px;
+    min-width: 0;
+    transform: none;
+  }
+
   .editor-sidebar {
-    top: 138px;
-    left: 18px;
-    right: 18px;
+    top: 220px;
+    left: 12px;
+    right: 12px;
     width: auto;
+    max-height: calc(100vh - 296px);
+  }
+
+  .editor-canvas {
+    touch-action: none;
+    overscroll-behavior: contain;
+  }
+
+  .editor-canvas .react-flow__pane {
+    touch-action: none;
+  }
+
+  .modern-node__handle {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .react-flow__node,
+  .modern-node {
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  .editor-corner--left,
+  .editor-corner--right {
+    bottom: 12px;
+  }
+
+  .editor-corner--left {
+    left: 10px;
+  }
+
+  .editor-corner--right {
+    right: 10px;
+  }
+
+  .floating-badge {
+    min-width: 0;
+    min-height: 38px;
+    padding: 0 12px;
+    border-radius: 12px;
+    font-size: 13px;
   }
 }
