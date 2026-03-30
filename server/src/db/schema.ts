@@ -23,6 +23,8 @@ export const treePersons = pgTable('tree_persons', {
   sources: text('sources').notNull().default(''),
   researchStatus: text('research_status').notNull().default('confirmed'),
   accent: text('accent').notNull().default('blue'),
+  panelColor: text('panel_color').notNull().default(''),
+  textColor: text('text_color').notNull().default(''),
   x: integer('x').notNull().default(0),
   y: integer('y').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),

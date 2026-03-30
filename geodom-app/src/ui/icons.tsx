@@ -106,6 +106,21 @@ export function GearIcon() {
   )
 }
 
+export function TuneIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M4 7h7M15 7h5M9 7a2 2 0 1 0 4 0 2 2 0 0 0-4 0Zm-5 10h11M19 17h1M13 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0Z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  )
+}
+
 export function ExitIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">

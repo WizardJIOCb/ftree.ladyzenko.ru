@@ -46,6 +46,8 @@ const createPersonSchema = z.object({
   sources: z.string().trim().max(4000).optional(),
   researchStatus: researchStatusSchema.optional(),
   accent: accentSchema.optional(),
+  panelColor: z.string().trim().max(32).optional(),
+  textColor: z.string().trim().max(32).optional(),
   x: z.number().int().optional(),
   y: z.number().int().optional(),
 })
@@ -61,6 +63,8 @@ const updatePersonSchema = z.object({
   sources: z.string().trim().max(4000).optional(),
   researchStatus: researchStatusSchema.optional(),
   accent: accentSchema.optional(),
+  panelColor: z.string().trim().max(32).optional(),
+  textColor: z.string().trim().max(32).optional(),
   x: z.number().int().optional(),
   y: z.number().int().optional(),
 })
@@ -125,6 +129,8 @@ function mapPerson(person: typeof treePersons.$inferSelect) {
     sources: person.sources,
     researchStatus: person.researchStatus as 'confirmed' | 'in_review' | 'hypothesis',
     accent: person.accent as 'blue' | 'pink' | 'slate',
+    panelColor: person.panelColor,
+    textColor: person.textColor,
     x: person.x,
     y: person.y,
   }
@@ -266,6 +272,8 @@ export async function registerTreeRoutes(app: FastifyInstance) {
         sources: body.data.sources ?? '',
         researchStatus: body.data.researchStatus ?? 'confirmed',
         accent: body.data.accent ?? accents[tree.members % accents.length],
+        panelColor: body.data.panelColor ?? '',
+        textColor: body.data.textColor ?? '',
         x: body.data.x ?? 420 + (tree.members % 2) * 180,
         y: body.data.y ?? 300 + Math.floor(tree.members / 2) * 120,
       })

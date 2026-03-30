@@ -6,6 +6,12 @@ export type CompactPersonNodeData = {
   accent: 'blue' | 'pink' | 'slate'
   researchStatus: 'confirmed' | 'in_review' | 'hypothesis'
   selected?: boolean
+  pulsing?: boolean
+  visualMode?: 'accent' | 'era'
+  toneIndex?: number
+  panelColor?: string
+  textColor?: string
+  accentColor?: string
 }
 
 const accentClassName: Record<CompactPersonNodeData['accent'], string> = {
@@ -19,8 +25,21 @@ export const CompactPersonNode = memo(function CompactPersonNode({
 }: {
   data: CompactPersonNodeData
 }) {
+  const toneClassName = data.visualMode === 'era' ? ` modern-node--era-${data.toneIndex ?? 0}` : ''
+  const inlineStyle =
+    data.panelColor || data.textColor || data.accentColor
+      ? {
+          ...(data.panelColor ? { background: data.panelColor } : {}),
+          ...(data.textColor ? { color: data.textColor } : {}),
+          ...(data.accentColor ? ({ ['--node-accent' as string]: data.accentColor } as Record<string, string>) : {}),
+        }
+      : undefined
+
   return (
-    <div className={`modern-node ${accentClassName[data.accent]}${data.selected ? ' is-selected' : ''}`}>
+    <div
+      className={`modern-node ${accentClassName[data.accent]}${toneClassName}${data.selected ? ' is-selected' : ''}${data.pulsing ? ' is-pulsing' : ''}`}
+      style={inlineStyle}
+    >
       <Handle className="modern-node__handle" type="target" position={Position.Top} />
       <Handle className="modern-node__handle" type="source" position={Position.Bottom} />
       <span className="modern-node__avatar">

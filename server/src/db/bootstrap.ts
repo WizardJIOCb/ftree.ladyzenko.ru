@@ -31,6 +31,8 @@ export async function bootstrapDatabase() {
       sources text NOT NULL DEFAULT '',
       research_status text NOT NULL DEFAULT 'confirmed',
       accent text NOT NULL DEFAULT 'blue',
+      panel_color text NOT NULL DEFAULT '',
+      text_color text NOT NULL DEFAULT '',
       x integer NOT NULL DEFAULT 0,
       y integer NOT NULL DEFAULT 0,
       created_at timestamp NOT NULL DEFAULT now(),
@@ -48,6 +50,8 @@ export async function bootstrapDatabase() {
     ALTER TABLE tree_persons ADD COLUMN IF NOT EXISTS aliases text NOT NULL DEFAULT '';
     ALTER TABLE tree_persons ADD COLUMN IF NOT EXISTS sources text NOT NULL DEFAULT '';
     ALTER TABLE tree_persons ADD COLUMN IF NOT EXISTS research_status text NOT NULL DEFAULT 'confirmed';
+    ALTER TABLE tree_persons ADD COLUMN IF NOT EXISTS panel_color text NOT NULL DEFAULT '';
+    ALTER TABLE tree_persons ADD COLUMN IF NOT EXISTS text_color text NOT NULL DEFAULT '';
   `)
 
   await pool.query(`

@@ -47,6 +47,8 @@ export type TreePerson = {
   sources: string
   researchStatus: TreePersonResearchStatus
   accent: TreePersonAccent
+  panelColor: string
+  textColor: string
   x: number
   y: number
 }

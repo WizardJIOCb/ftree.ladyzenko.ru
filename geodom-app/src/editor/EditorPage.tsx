@@ -1,16 +1,42 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Background, BackgroundVariant, ReactFlow, applyNodeChanges, type NodeChange, type ReactFlowInstance } from '@xyflow/react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 
 import { CompactPersonNode } from '../components/CompactPersonNode'
 import type { TreeEditorPayload, TreeEditorRelationship, TreePerson, TreeSummary } from '../types'
-import { ArrowLeftIcon, FitIcon, GearIcon, PlusIcon, SparkIcon, ZoomInIcon, ZoomOutIcon } from '../ui/icons'
-import { PersonListSidebar, PersonSidebar, TreeSidebar, type RelationshipRole } from './EditorSidebar'
-import { createEditorEdges, createEditorNodes, emptyPersonForm, emptyTreeForm, extractLayout, type PersonFormState, type TreeFormState } from './utils'
+import { ArrowLeftIcon, FitIcon, GearIcon, PlusIcon, SearchIcon, SparkIcon, TuneIcon, ZoomInIcon, ZoomOutIcon } from '../ui/icons'
+import { PersonListSidebar, PersonSidebar, RelationshipSidebar, TreeSidebar, type RelationshipRole } from './EditorSidebar'
+import { EditorSettingsModal } from './EditorSettingsModal'
+import { RelationshipEdge } from './RelationshipEdge'
+import {
+  type AutoLayoutMode,
+  createAutoLayout,
+  buildGenerationByPerson,
+  createEditorEdges,
+  createEditorNodes,
+  defaultEditorViewSettings,
+  EDITOR_NODE_HEIGHT,
+  EDITOR_NODE_WIDTH,
+  emptyPersonForm,
+  emptyTreeForm,
+  extractLayout,
+  type EditorViewSettings,
+  type PersonFormState,
+  type TreeFormState,
+} from './utils'
 
 const compactNodeTypes = { compactPerson: CompactPersonNode }
-const NODE_WIDTH = 144
-const NODE_HEIGHT = 48
+const relationshipEdgeTypes = { relationshipEdge: RelationshipEdge }
+const EDITOR_VIEW_SETTINGS_KEY = 'ftree-editor-view-settings'
+
+function normalizeSearchText(value: string) {
+  return value
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[^\p{L}\p{N}\s-]+/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
 
 export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloadTrees: () => Promise<void> }) {
   const navigate = useNavigate()
@@ -23,18 +49,44 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
   const [persons, setPersons] = useState<TreePerson[]>([])
   const [relationships, setRelationships] = useState<TreeEditorRelationship[]>([])
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null)
+  const [pulsingPersonId, setPulsingPersonId] = useState<string | null>(null)
+  const [selectedRelationshipId, setSelectedRelationshipId] = useState<string | null>(null)
+  const [returnToRelationshipId, setReturnToRelationshipId] = useState<string | null>(null)
+  const [relationshipReturnViewport, setRelationshipReturnViewport] = useState<{
+    x: number
+    y: number
+    zoom: number
+  } | null>(null)
   const [isTreePanelOpen, setIsTreePanelOpen] = useState(false)
   const [isPersonListOpen, setIsPersonListOpen] = useState(false)
   const [shouldFitView, setShouldFitView] = useState(true)
   const [creatingPerson, setCreatingPerson] = useState(false)
+  const [activeAutoMode, setActiveAutoMode] = useState<AutoLayoutMode>('auto1')
+  const [activeLayoutPreset, setActiveLayoutPreset] = useState<'relayout' | AutoLayoutMode>('auto1')
+  const [autoLayouting, setAutoLayouting] = useState(false)
   const [savingPerson, setSavingPerson] = useState(false)
   const [savingTree, setSavingTree] = useState(false)
   const [linkingRelationship, setLinkingRelationship] = useState(false)
   const [editingRelationshipId, setEditingRelationshipId] = useState<string | null>(null)
+  const [savingRelationshipPanel, setSavingRelationshipPanel] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [viewSettings, setViewSettings] = useState<EditorViewSettings>(() => {
+    if (typeof window === 'undefined') return defaultEditorViewSettings
+
+    try {
+      const saved = window.localStorage.getItem(EDITOR_VIEW_SETTINGS_KEY)
+      return saved ? { ...defaultEditorViewSettings, ...(JSON.parse(saved) as Partial<EditorViewSettings>) } : defaultEditorViewSettings
+    } catch {
+      return defaultEditorViewSettings
+    }
+  })
   const [personError, setPersonError] = useState('')
   const [treeError, setTreeError] = useState('')
   const [relationshipError, setRelationshipError] = useState('')
+  const [relationshipPanelError, setRelationshipPanelError] = useState('')
   const [personForm, setPersonForm] = useState<PersonFormState>(emptyPersonForm)
+  const [personFormOwnerId, setPersonFormOwnerId] = useState<string | null>(null)
   const [treeForm, setTreeForm] = useState<TreeFormState>(emptyTreeForm)
   const [relationshipForm, setRelationshipForm] = useState<{
     targetId: string
@@ -47,14 +99,82 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
     note: '',
     researchStatus: 'confirmed',
   })
+  const [relationshipPanelForm, setRelationshipPanelForm] = useState<{
+    sourceId: string
+    targetId: string
+    kind: TreeEditorRelationship['kind']
+    note: string
+    researchStatus: TreeEditorRelationship['researchStatus']
+  }>({
+    sourceId: '',
+    targetId: '',
+    kind: 'parent-child',
+    note: '',
+    researchStatus: 'confirmed',
+  })
 
   const fallbackTree = trees.find((entry) => entry.id === treeId) ?? null
   const currentTree = editorTree ?? fallbackTree
-  const treeIndex = trees.findIndex((entry) => entry.id === treeId)
   const selectedPerson = persons.find((person) => person.id === selectedPersonId) ?? null
-  const nodes = useMemo(() => createEditorNodes(persons, selectedPersonId), [persons, selectedPersonId])
-  const edges = useMemo(() => createEditorEdges(relationships), [relationships])
+  const selectedRelationship = relationships.find((relationship) => relationship.id === selectedRelationshipId) ?? null
+  const visualMode = activeAutoMode === 'auto2' ? 'era' : 'accent'
+  const previewPersons = useMemo(
+    () =>
+      selectedPersonId && personFormOwnerId === selectedPersonId
+        ? persons.map((person) =>
+            person.id === selectedPersonId
+              ? {
+                  ...person,
+                  accent: personForm.accent,
+                  researchStatus: personForm.researchStatus,
+                  panelColor: personForm.panelColor,
+                  textColor: personForm.textColor,
+                }
+              : person,
+          )
+        : persons,
+    [personForm.accent, personForm.panelColor, personForm.researchStatus, personForm.textColor, personFormOwnerId, persons, selectedPersonId],
+  )
+  const generationByPerson = useMemo(() => buildGenerationByPerson(persons, relationships), [persons, relationships])
+  const pulsingPersonTimeoutRef = useRef<number | null>(null)
+  const selectedPersonIdRef = useRef<string | null>(null)
+  const personFormOwnerIdRef = useRef<string | null>(null)
+  const nodes = useMemo(
+    () => createEditorNodes(previewPersons, selectedPersonId, pulsingPersonId, visualMode, generationByPerson, viewSettings.autoColorNodes),
+    [generationByPerson, previewPersons, pulsingPersonId, selectedPersonId, viewSettings.autoColorNodes, visualMode],
+  )
+  const edges = useMemo(
+    () => createEditorEdges(relationships, persons, visualMode, viewSettings, selectedRelationshipId, selectedPersonId),
+    [persons, relationships, selectedPersonId, selectedRelationshipId, viewSettings, visualMode],
+  )
   const relationshipTargets = useMemo(() => persons.filter((person) => person.id !== selectedPersonId), [persons, selectedPersonId])
+  const normalizedSearchQuery = useMemo(() => normalizeSearchText(searchQuery), [searchQuery])
+  const searchResults = useMemo(() => {
+    if (!normalizedSearchQuery) return []
+
+    return [...persons]
+      .map((person) => {
+        const haystack = normalizeSearchText(
+          [person.label, person.firstName, person.lastName, person.aliases, person.years, person.branch, person.place]
+            .filter(Boolean)
+            .join(' '),
+        )
+
+        return {
+          person,
+          startsWith: haystack.startsWith(normalizedSearchQuery) || normalizeSearchText(person.label).startsWith(normalizedSearchQuery),
+          index: haystack.indexOf(normalizedSearchQuery),
+        }
+      })
+      .filter((entry) => entry.index >= 0)
+      .sort((left, right) => {
+        if (left.startsWith !== right.startsWith) return left.startsWith ? -1 : 1
+        if (left.index !== right.index) return left.index - right.index
+        return left.person.label.localeCompare(right.person.label, 'ru')
+      })
+      .slice(0, 8)
+      .map((entry) => entry.person)
+  }, [normalizedSearchQuery, persons])
   const selectedConnections = useMemo(() => {
     if (!selectedPersonId) return []
 
@@ -85,6 +205,9 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
 
       setEditorStatus('loading')
       setSelectedPersonId(null)
+      setSelectedRelationshipId(null)
+      setReturnToRelationshipId(null)
+      setRelationshipReturnViewport(null)
       setEditingRelationshipId(null)
       setIsTreePanelOpen(false)
       setIsPersonListOpen(false)
@@ -133,6 +256,7 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
   }, [flow, persons, shouldFitView])
 
   useEffect(() => {
+    setPersonFormOwnerId(selectedPerson?.id ?? null)
     setPersonForm(
       selectedPerson
         ? {
@@ -146,10 +270,20 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
             sources: selectedPerson.sources,
             researchStatus: selectedPerson.researchStatus,
             accent: selectedPerson.accent,
+            panelColor: selectedPerson.panelColor,
+            textColor: selectedPerson.textColor,
           }
         : emptyPersonForm,
     )
   }, [selectedPerson])
+
+  useEffect(() => {
+    selectedPersonIdRef.current = selectedPersonId
+  }, [selectedPersonId])
+
+  useEffect(() => {
+    personFormOwnerIdRef.current = personFormOwnerId
+  }, [personFormOwnerId])
 
   useEffect(() => {
     setTreeForm(currentTree ? { title: currentTree.title, surname: currentTree.surname, privacy: currentTree.privacy } : emptyTreeForm)
@@ -161,6 +295,22 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
   }, [selectedPersonId])
 
   useEffect(() => {
+    if (!selectedRelationship) {
+      setRelationshipPanelError('')
+      return
+    }
+
+    setRelationshipPanelForm({
+      sourceId: selectedRelationship.source,
+      targetId: selectedRelationship.target,
+      kind: selectedRelationship.kind,
+      note: selectedRelationship.note,
+      researchStatus: selectedRelationship.researchStatus,
+    })
+    setRelationshipPanelError('')
+  }, [selectedRelationship])
+
+  useEffect(() => {
     setRelationshipForm((current) => ({
       role: current.role,
       targetId: relationshipTargets.some((person) => person.id === current.targetId) ? current.targetId : relationshipTargets[0]?.id ?? '',
@@ -169,6 +319,20 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
     }))
   }, [relationshipTargets])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(EDITOR_VIEW_SETTINGS_KEY, JSON.stringify(viewSettings))
+  }, [viewSettings])
+
+  useEffect(
+    () => () => {
+      if (pulsingPersonTimeoutRef.current !== null) {
+        window.clearTimeout(pulsingPersonTimeoutRef.current)
+      }
+    },
+    [],
+  )
+
   if (!treeId) return <Navigate to="/trees" replace />
 
   function syncZoom() {
@@ -176,13 +340,30 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
     setZoomPercent(Math.round(flow.getViewport().zoom * 100))
   }
 
+  function pulsePerson(personId: string) {
+    if (pulsingPersonTimeoutRef.current !== null) {
+      window.clearTimeout(pulsingPersonTimeoutRef.current)
+      pulsingPersonTimeoutRef.current = null
+    }
+
+    setPulsingPersonId(null)
+
+    window.setTimeout(() => {
+      setPulsingPersonId(personId)
+      pulsingPersonTimeoutRef.current = window.setTimeout(() => {
+        setPulsingPersonId((current) => (current === personId ? null : current))
+        pulsingPersonTimeoutRef.current = null
+      }, 1500)
+    }, 0)
+  }
+
   function fitViewportToPersons(targetPersons: TreePerson[]) {
     if (!flow || targetPersons.length === 0) return
 
     const minX = Math.min(...targetPersons.map((person) => person.x))
     const minY = Math.min(...targetPersons.map((person) => person.y))
-    const maxX = Math.max(...targetPersons.map((person) => person.x + NODE_WIDTH))
-    const maxY = Math.max(...targetPersons.map((person) => person.y + NODE_HEIGHT))
+    const maxX = Math.max(...targetPersons.map((person) => person.x + EDITOR_NODE_WIDTH))
+    const maxY = Math.max(...targetPersons.map((person) => person.y + EDITOR_NODE_HEIGHT))
 
     void flow.fitBounds(
       {
@@ -208,28 +389,32 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
     })
 
     return {
-      x: Math.round(centerPoint.x - NODE_WIDTH / 2),
-      y: Math.round(centerPoint.y - NODE_HEIGHT / 2),
+      x: Math.round(centerPoint.x - EDITOR_NODE_WIDTH / 2),
+      y: Math.round(centerPoint.y - EDITOR_NODE_HEIGHT / 2),
     }
   }
 
-  function focusPerson(personId: string, explicitPerson?: TreePerson, openEditor = false) {
+  function centerPerson(personId: string, explicitPerson?: TreePerson, options?: { openEditor?: boolean; keepPersonList?: boolean }) {
     const person = explicitPerson ?? persons.find((item) => item.id === personId)
     if (!person) return
 
     setIsTreePanelOpen(false)
 
-    if (openEditor) {
+    if (options?.openEditor) {
       setSelectedPersonId(personId)
       setIsPersonListOpen(false)
-    } else {
+    } else if (options?.keepPersonList) {
       setSelectedPersonId(null)
       setIsPersonListOpen(true)
+      pulsePerson(personId)
+    } else {
+      setSelectedPersonId(null)
+      setIsPersonListOpen(false)
     }
 
     if (!flow) return
 
-    void flow.setCenter(person.x + NODE_WIDTH / 2, person.y + NODE_HEIGHT / 2, {
+    void flow.setCenter(person.x + EDITOR_NODE_WIDTH / 2, person.y + EDITOR_NODE_HEIGHT / 2, {
       duration: 320,
       zoom: Math.max(flow.getZoom(), 0.95),
     })
@@ -237,9 +422,62 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
     window.setTimeout(syncZoom, 360)
   }
 
+  function focusPerson(personId: string, explicitPerson?: TreePerson, openEditor = false) {
+    centerPerson(personId, explicitPerson, { openEditor, keepPersonList: !openEditor })
+  }
+
+  function focusSearchPerson(personId: string) {
+    const person = persons.find((item) => item.id === personId)
+    if (!person) return
+
+    setSearchQuery('')
+    setSelectedRelationshipId(null)
+    centerPerson(personId, person, { openEditor: true })
+  }
+
+  function openRelationshipSidebar(relationshipId: string) {
+    setSelectedPersonId(null)
+    setSelectedRelationshipId(relationshipId)
+    setReturnToRelationshipId(null)
+    setRelationshipReturnViewport(null)
+    setIsTreePanelOpen(false)
+    setIsPersonListOpen(false)
+    setEditingRelationshipId(null)
+  }
+
+  function editPersonFromRelationship(personId: string) {
+    if (selectedRelationshipId) {
+      setReturnToRelationshipId(selectedRelationshipId)
+      if (flow) {
+        setRelationshipReturnViewport(flow.getViewport())
+      }
+    }
+    setSelectedRelationshipId(null)
+    focusPerson(personId, undefined, true)
+  }
+
+  function returnToRelationship() {
+    if (!returnToRelationshipId) return
+
+    const relationshipId = returnToRelationshipId
+    setSelectedPersonId(null)
+    setSelectedRelationshipId(relationshipId)
+    setReturnToRelationshipId(null)
+    setIsTreePanelOpen(false)
+    setIsPersonListOpen(false)
+    setEditingRelationshipId(null)
+
+    if (flow && relationshipReturnViewport) {
+      void flow.setViewport(relationshipReturnViewport, { duration: 320 })
+      window.setTimeout(syncZoom, 360)
+    }
+
+    setRelationshipReturnViewport(null)
+  }
+
   function updatePersonPositions(changes: NodeChange[]) {
     setPersons((current) => {
-      const changedNodes = applyNodeChanges(changes, createEditorNodes(current, selectedPersonId))
+      const changedNodes = applyNodeChanges(changes, createEditorNodes(current, selectedPersonId, pulsingPersonId))
       return current.map((person) => {
         const node = changedNodes.find((item) => item.id === person.id)
         return node ? { ...person, x: Math.round(node.position.x), y: Math.round(node.position.y) } : person
@@ -294,6 +532,7 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
       setSelectedPersonId(created.id)
       setIsTreePanelOpen(false)
       setIsPersonListOpen(false)
+      setSearchQuery('')
       setShouldFitView(false)
       window.setTimeout(() => focusPerson(created.id, created, true), 40)
       await reloadTrees()
@@ -332,6 +571,13 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
         setEditingRelationshipId(null)
       }
 
+      if (selectedRelationshipId) {
+        const removedRelationship = relationships.find((item) => item.id === selectedRelationshipId)
+        if (removedRelationship && (removedRelationship.source === personId || removedRelationship.target === personId)) {
+          setSelectedRelationshipId(null)
+        }
+      }
+
       await reloadTrees()
     } catch {
       setPersonError('Не удалось удалить персону.')
@@ -360,6 +606,66 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
       setPersonError('Не удалось сохранить изменения персоны.')
     } finally {
       setSavingPerson(false)
+    }
+  }
+
+  async function commitPersonColors(personId: string, patch: Pick<PersonFormState, 'panelColor' | 'textColor'>) {
+    if (!treeId) return
+
+    const previousPerson = persons.find((person) => person.id === personId)
+    if (!previousPerson) return
+
+    setPersonError('')
+    setPersons((current) =>
+      current.map((person) =>
+        person.id === personId
+          ? {
+              ...person,
+              panelColor: patch.panelColor,
+              textColor: patch.textColor,
+            }
+          : person,
+      ),
+    )
+
+    try {
+      const response = await fetch(`/api/trees/${treeId}/persons/${personId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+
+      if (!response.ok) throw new Error('Unable to save person colors')
+
+      const updated = (await response.json()) as TreePerson
+      setPersons((current) => current.map((person) => (person.id === updated.id ? updated : person)))
+      if (selectedPersonIdRef.current === updated.id && personFormOwnerIdRef.current === updated.id) {
+        setPersonForm((current) => ({
+          ...current,
+          panelColor: updated.panelColor,
+          textColor: updated.textColor,
+        }))
+      }
+    } catch {
+      setPersons((current) =>
+        current.map((person) =>
+          person.id === personId
+            ? {
+                ...person,
+                panelColor: previousPerson.panelColor,
+                textColor: previousPerson.textColor,
+              }
+            : person,
+        ),
+      )
+      if (selectedPersonIdRef.current === personId && personFormOwnerIdRef.current === personId) {
+        setPersonForm((current) => ({
+          ...current,
+          panelColor: previousPerson.panelColor,
+          textColor: previousPerson.textColor,
+        }))
+      }
+      setPersonError('Не удалось автоматически сохранить цвета персоны.')
     }
   }
 
@@ -486,6 +792,36 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
     }
   }
 
+  async function saveSelectedRelationship() {
+    if (!treeId || !selectedRelationship || savingRelationshipPanel) return
+
+    if (!relationshipPanelForm.sourceId || !relationshipPanelForm.targetId || relationshipPanelForm.sourceId === relationshipPanelForm.targetId) {
+      setRelationshipPanelError('У связи должны быть выбраны две разные персоны.')
+      return
+    }
+
+    setSavingRelationshipPanel(true)
+    setRelationshipPanelError('')
+
+    try {
+      const response = await fetch(`/api/trees/${treeId}/relationships/${selectedRelationship.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(relationshipPanelForm),
+      })
+
+      if (!response.ok) throw new Error('Unable to save relationship')
+
+      const updated = (await response.json()) as TreeEditorRelationship
+      setRelationships((current) => current.map((item) => (item.id === updated.id ? updated : item)))
+      await reloadTrees()
+    } catch {
+      setRelationshipPanelError('Не удалось сохранить связь. Проверьте выбранных персон и параметры связи.')
+    } finally {
+      setSavingRelationshipPanel(false)
+    }
+  }
+
   async function deleteRelationship(relationshipId: string) {
     if (!treeId) return
 
@@ -503,6 +839,9 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
       if (!response.ok) throw new Error('Unable to delete relationship')
 
       setRelationships((current) => current.filter((item) => item.id !== relationshipId))
+      if (selectedRelationshipId === relationshipId) {
+        setSelectedRelationshipId(null)
+      }
       if (editingRelationshipId === relationshipId) {
         cancelRelationshipEdit()
       }
@@ -513,6 +852,7 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
   }
 
   function relayout() {
+    setActiveLayoutPreset('relayout')
     const columns = Math.max(2, Math.ceil(Math.sqrt(Math.max(persons.length, 1))))
     const nextPersons = persons.map((person, index) => {
       const column = index % columns
@@ -530,17 +870,37 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
     setShouldFitView(true)
   }
 
+  async function autoRelayout(mode: AutoLayoutMode) {
+    if (persons.length === 0 || autoLayouting) return
+
+    setAutoLayouting(true)
+    setActiveAutoMode(mode)
+    setActiveLayoutPreset(mode)
+
+    try {
+      const nextPersons = createAutoLayout(persons, relationships, mode)
+      setPersons(nextPersons)
+      setSelectedPersonId(null)
+      setIsPersonListOpen(false)
+      setIsTreePanelOpen(false)
+      await persistLayout(nextPersons)
+      setShouldFitView(true)
+    } finally {
+      setAutoLayouting(false)
+    }
+  }
+
   return (
     <section className="editor-screen">
       <div className="editor-top editor-top--left">
         <button className="floating-button" onClick={() => navigate('/trees')} type="button" aria-label="Назад">
           <ArrowLeftIcon />
         </button>
-        <span className="floating-badge">{treeIndex >= 0 ? treeIndex + 1 : 1}</span>
       </div>
 
       <div className="editor-top editor-top--center">
-        <div className="floating-toolbar">
+        <div className="editor-toolbar-stack">
+          <div className="floating-toolbar">
           <button
             onClick={(event) => {
               event.stopPropagation()
@@ -560,9 +920,36 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
               relayout()
             }}
             type="button"
+            className={activeLayoutPreset === 'relayout' ? 'is-active' : ''}
           >
             <SparkIcon />
             <span>Раскладка</span>
+          </button>
+
+          <button
+            onClick={(event) => {
+              event.stopPropagation()
+              void autoRelayout('auto1')
+            }}
+            type="button"
+            disabled={autoLayouting}
+            className={activeLayoutPreset === 'auto1' ? 'is-active' : ''}
+          >
+            <SparkIcon />
+            <span>{autoLayouting && activeAutoMode === 'auto1' ? 'Авто 1...' : 'Авто 1'}</span>
+          </button>
+
+          <button
+            onClick={(event) => {
+              event.stopPropagation()
+              void autoRelayout('auto2')
+            }}
+            type="button"
+            disabled={autoLayouting}
+            className={activeLayoutPreset === 'auto2' ? 'is-active' : ''}
+          >
+            <SparkIcon />
+            <span>{autoLayouting && activeAutoMode === 'auto2' ? 'Авто 2...' : 'Авто 2'}</span>
           </button>
 
           <div className="floating-toolbar__divider" />
@@ -594,6 +981,42 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
           <button onClick={() => fitViewportToPersons(persons)} type="button" aria-label="Вписать">
             <FitIcon />
           </button>
+          </div>
+
+          <div className="editor-search-shell">
+            <label className="editor-search" aria-label="Быстрый поиск персон">
+              <SearchIcon />
+              <input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Быстрый поиск по ФИО"
+                type="search"
+              />
+            </label>
+
+            {normalizedSearchQuery && (
+              <div className="editor-search-results">
+                {searchResults.length > 0 ? (
+                  searchResults.map((person) => (
+                    <button
+                      key={person.id}
+                      className="editor-search-results__item"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        focusSearchPerson(person.id)
+                      }}
+                      type="button"
+                    >
+                      <strong>{person.label}</strong>
+                      <span>{person.years || person.branch || person.place || 'Перейти к персоне'}</span>
+                    </button>
+                  ))
+                ) : (
+                  <div className="editor-search-results__empty">Ничего похожего не найдено</div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -601,7 +1024,21 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
         <button
           className="floating-action"
           onClick={() => {
+            setIsTreePanelOpen(false)
+            setIsPersonListOpen(false)
+            setSelectedRelationshipId(null)
+            setIsSettingsOpen(true)
+          }}
+          type="button"
+        >
+          <TuneIcon />
+          <span>Настройки</span>
+        </button>
+        <button
+          className="floating-action"
+          onClick={() => {
             setSelectedPersonId(null)
+            setSelectedRelationshipId(null)
             setIsPersonListOpen(false)
             setIsTreePanelOpen((current) => !current)
           }}
@@ -620,17 +1057,27 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
           nodes={nodes}
           edges={edges}
           nodeTypes={compactNodeTypes}
+          edgeTypes={relationshipEdgeTypes}
           onInit={setFlow}
           onMoveEnd={syncZoom}
-          onNodeClick={(_, node) => {
+          onNodeDragStart={(_, node) => {
             setSelectedPersonId(node.id)
+            setSelectedRelationshipId(null)
             setIsTreePanelOpen(false)
             setIsPersonListOpen(false)
           }}
+          onNodeClick={(_, node) => {
+            setSelectedPersonId(node.id)
+            setSelectedRelationshipId(null)
+            setIsTreePanelOpen(false)
+            setIsPersonListOpen(false)
+          }}
+          onEdgeClick={(_, edge) => openRelationshipSidebar(edge.id)}
           onNodeDragStop={(_, node) => void persistPersonPosition(node.id, node.position.x, node.position.y)}
           onNodesChange={updatePersonPositions}
           onPaneClick={() => {
             setSelectedPersonId(null)
+            setSelectedRelationshipId(null)
             setIsPersonListOpen(false)
           }}
           nodesDraggable
@@ -650,6 +1097,7 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
 
         {selectedPerson && (
           <PersonSidebar
+            key={selectedPerson.id}
             selectedPerson={selectedPerson}
             personForm={personForm}
             savingPerson={savingPerson}
@@ -661,7 +1109,9 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
             relationshipForm={relationshipForm}
             selectedConnections={selectedConnections}
             onClose={() => setSelectedPersonId(null)}
+            onReturnToRelationship={returnToRelationshipId ? returnToRelationship : undefined}
             onPersonFormChange={(patch) => setPersonForm((current) => ({ ...current, ...patch }))}
+            onCommitPersonColors={(personId, patch) => void commitPersonColors(personId, patch)}
             onRelationshipFormChange={(patch) => setRelationshipForm((current) => ({ ...current, ...patch }))}
             onSavePerson={() => void saveSelectedPerson()}
             onCreateRelationship={() => void createRelationship()}
@@ -673,7 +1123,25 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
           />
         )}
 
-        {!selectedPerson && isTreePanelOpen && currentTree && (
+        {!selectedPerson && selectedRelationship && (
+          <RelationshipSidebar
+            relationship={selectedRelationship}
+            sourcePerson={persons.find((person) => person.id === relationshipPanelForm.sourceId) ?? null}
+            targetPerson={persons.find((person) => person.id === relationshipPanelForm.targetId) ?? null}
+            persons={persons}
+            form={relationshipPanelForm}
+            saving={savingRelationshipPanel}
+            error={relationshipPanelError}
+            onClose={() => setSelectedRelationshipId(null)}
+            onFormChange={(patch) => setRelationshipPanelForm((current) => ({ ...current, ...patch }))}
+            onSave={() => void saveSelectedRelationship()}
+            onDelete={() => void deleteRelationship(selectedRelationship.id)}
+            onFocusPerson={(personId) => focusPerson(personId)}
+            onEditPerson={editPersonFromRelationship}
+          />
+        )}
+
+        {!selectedPerson && !selectedRelationship && isTreePanelOpen && currentTree && (
           <TreeSidebar
             tree={currentTree}
             treeForm={treeForm}
@@ -687,7 +1155,7 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
           />
         )}
 
-        {!selectedPerson && !isTreePanelOpen && isPersonListOpen && (
+        {!selectedPerson && !selectedRelationship && !isTreePanelOpen && isPersonListOpen && (
           <PersonListSidebar
             persons={persons}
             selectedPersonId={selectedPersonId}
@@ -695,6 +1163,14 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
             onFocusPerson={(personId) => focusPerson(personId)}
             onEditPerson={(personId) => focusPerson(personId, undefined, true)}
             onDeletePerson={(personId) => void deletePerson(personId)}
+          />
+        )}
+
+        {isSettingsOpen && (
+          <EditorSettingsModal
+            settings={viewSettings}
+            onClose={() => setIsSettingsOpen(false)}
+            onChange={(patch) => setViewSettings((current) => ({ ...current, ...patch }))}
           />
         )}
       </div>
@@ -708,6 +1184,7 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
           className="floating-badge floating-badge--interactive"
           onClick={() => {
             setSelectedPersonId(null)
+            setSelectedRelationshipId(null)
             setIsTreePanelOpen(false)
             setIsPersonListOpen((current) => !current)
           }}
