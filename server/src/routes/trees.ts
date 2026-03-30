@@ -110,7 +110,7 @@ function mapTree(tree: typeof trees.$inferSelect) {
 function mapPerson(person: typeof treePersons.$inferSelect) {
   return {
     id: person.id,
-    label: buildPersonLabel(person.firstName, person.lastName, person.label),
+    label: person.label,
     firstName: person.firstName,
     lastName: person.lastName,
     years: person.years,
