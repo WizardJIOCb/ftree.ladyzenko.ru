@@ -300,6 +300,47 @@ export async function registerTreeRoutes(app: FastifyInstance) {
     return mapPerson(updated)
   })
 
+  app.delete('/api/trees/:treeId/persons/:personId', async (request, reply) => {
+    const params = personParamsSchema.safeParse(request.params)
+
+    if (!params.success) {
+      return reply.code(400).send({ ok: false, error: 'Invalid payload' })
+    }
+
+    const [person] = await db
+      .select()
+      .from(treePersons)
+      .where(and(eq(treePersons.treeId, params.data.treeId), eq(treePersons.id, params.data.personId)))
+      .limit(1)
+
+    if (!person) {
+      return reply.code(404).send({ ok: false, error: 'Person not found' })
+    }
+
+    await db
+      .delete(treeRelationships)
+      .where(
+        and(
+          eq(treeRelationships.treeId, params.data.treeId),
+          or(eq(treeRelationships.sourceId, params.data.personId), eq(treeRelationships.targetId, params.data.personId)),
+        ),
+      )
+
+    await db
+      .delete(treePersons)
+      .where(and(eq(treePersons.treeId, params.data.treeId), eq(treePersons.id, params.data.personId)))
+
+    await db
+      .update(trees)
+      .set({
+        members: sql`GREATEST(${trees.members} - 1, 0)`,
+        lastUpdated: new Date(),
+      })
+      .where(eq(trees.id, params.data.treeId))
+
+    return { ok: true }
+  })
+
   app.post('/api/trees/:treeId/relationships', async (request, reply) => {
     const params = treeParamsSchema.safeParse(request.params)
     const body = createRelationshipSchema.safeParse(request.body)

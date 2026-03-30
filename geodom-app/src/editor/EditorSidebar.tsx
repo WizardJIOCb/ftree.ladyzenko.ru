@@ -17,6 +17,7 @@ type PersonSidebarProps = {
   onRelationshipFormChange: (patch: { targetId?: string; kind?: RelationshipKind }) => void
   onSavePerson: () => void
   onCreateRelationship: () => void
+  onDeletePerson: () => void
 }
 
 type TreeSidebarProps = {
@@ -29,6 +30,14 @@ type TreeSidebarProps = {
   onClose: () => void
   onTreeFormChange: (patch: Partial<TreeFormState>) => void
   onSaveTree: () => void
+}
+
+type PersonListSidebarProps = {
+  persons: TreePerson[]
+  selectedPersonId: string | null
+  onClose: () => void
+  onOpenPerson: (personId: string) => void
+  onDeletePerson: (personId: string) => void
 }
 
 export function PersonSidebar(props: PersonSidebarProps) {
@@ -58,7 +67,10 @@ export function PersonSidebar(props: PersonSidebarProps) {
         </label>
         <label className="editor-field"><span>Заметка</span><textarea rows={4} value={props.personForm.note} onChange={(event) => props.onPersonFormChange({ note: event.target.value })} /></label>
         {props.personError && <p className="editor-sidebar__error">{props.personError}</p>}
-        <button className="editor-sidebar__save" disabled={props.savingPerson} onClick={props.onSavePerson} type="button">{props.savingPerson ? 'Сохраняем...' : 'Сохранить персону'}</button>
+        <div className="editor-sidebar__actions">
+          <button className="editor-sidebar__save" disabled={props.savingPerson} onClick={props.onSavePerson} type="button">{props.savingPerson ? 'Сохраняем...' : 'Сохранить персону'}</button>
+          <button className="editor-sidebar__danger" onClick={props.onDeletePerson} type="button">Удалить</button>
+        </div>
       </div>
 
       <div className="editor-sidebar__section editor-sidebar__section--soft">
@@ -119,6 +131,36 @@ export function TreeSidebar(props: TreeSidebarProps) {
         <p className="editor-sidebar__hint">Последнее обновление: {props.tree.lastUpdated}</p>
         {props.treeError && <p className="editor-sidebar__error">{props.treeError}</p>}
         <button className="editor-sidebar__save" disabled={props.savingTree} onClick={props.onSaveTree} type="button">{props.savingTree ? 'Сохраняем...' : 'Сохранить дерево'}</button>
+      </div>
+    </aside>
+  )
+}
+
+export function PersonListSidebar(props: PersonListSidebarProps) {
+  return (
+    <aside className="editor-sidebar">
+      <div className="editor-sidebar__header">
+        <div>
+          <span className="editor-sidebar__eyebrow">Персоны</span>
+          <h3>{props.persons.length} в дереве</h3>
+        </div>
+        <button className="editor-sidebar__close" onClick={props.onClose} type="button" aria-label="Закрыть"><CloseIcon /></button>
+      </div>
+
+      <div className="editor-person-list">
+        {props.persons.length === 0 && <p className="editor-sidebar__hint">Пока нет персон.</p>}
+        {props.persons.map((person) => (
+          <div key={person.id} className={`editor-person-list__item${props.selectedPersonId === person.id ? ' is-selected' : ''}`}>
+            <button className="editor-person-list__main" onClick={() => props.onOpenPerson(person.id)} type="button">
+              <strong>{person.label}</strong>
+              <span>{person.years || person.place || person.branch || 'Без уточнений'}</span>
+            </button>
+            <div className="editor-person-list__actions">
+              <button className="editor-sidebar__secondary" onClick={() => props.onOpenPerson(person.id)} type="button">Изменить</button>
+              <button className="editor-sidebar__danger" onClick={() => props.onDeletePerson(person.id)} type="button">Удалить</button>
+            </div>
+          </div>
+        ))}
       </div>
     </aside>
   )
