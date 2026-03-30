@@ -4,6 +4,15 @@ set -euo pipefail
 PROJECT_DIR="${1:-/var/www/ftree.ladyzenko.ru}"
 BRANCH="${2:-main}"
 
+if docker compose version >/dev/null 2>&1; then
+  DOCKER_COMPOSE_CMD="docker compose"
+elif command -v docker-compose >/dev/null 2>&1; then
+  DOCKER_COMPOSE_CMD="docker-compose"
+else
+  echo "Docker Compose is not installed on the server."
+  exit 1
+fi
+
 mkdir -p "$PROJECT_DIR"
 
 if [ ! -d "$PROJECT_DIR/.git" ]; then
@@ -19,4 +28,4 @@ if [ ! -f .env ]; then
   cp .env.example .env
 fi
 
-docker compose up -d --build postgres web
+$DOCKER_COMPOSE_CMD up -d --build postgres web
