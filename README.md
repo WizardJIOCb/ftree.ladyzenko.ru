@@ -1,26 +1,24 @@
 # Geodom Prototype
 
-Текущий репозиторий содержит первый прототип `ftree.ladyzenko.ru`: мягкий пастельный интерфейс визуального редактора семейного дерева на React Flow и инфраструктурную обвязку для локальной разработки и базового деплоя.
+Репозиторий содержит первый живой прототип `ftree.ladyzenko.ru`: фронтенд визуального редактора семейного дерева, backend API на Fastify и PostgreSQL в Docker.
 
 ## Что внутри
 
-- `geodom-app/` — фронтенд на `React + TypeScript + Vite`
-- `docker-compose.yml` — PostgreSQL в Docker и production-контейнер для фронтенда
-- `start-dev.bat` — запуск локальной разработки на Windows
-- `stop-dev.bat` — остановка docker-сервисов
+- `geodom-app/` — frontend на `React + TypeScript + Vite + React Flow`
+- `server/` — backend на `Fastify + Drizzle ORM + PostgreSQL`
+- `docker-compose.yml` — `postgres`, `api`, `web`
+- `start-dev.bat` — локальный запуск на Windows
+- `stop-dev.bat` — остановка локальных docker-сервисов
 - `deploy.sh` — обновление и запуск проекта на Linux-сервере из git
-- `.env.example` — переменные окружения для базы и web-контейнера
 
 ## Локальный запуск на Windows
 
-### 1. Требования
+### Требования
 
 - `Node.js 22+`
 - `Docker Desktop`
 
-### 2. Старт
-
-Запустите:
+### Старт
 
 ```bat
 start-dev.bat
@@ -28,19 +26,19 @@ start-dev.bat
 
 Скрипт:
 
-- создаст `.env` из `.env.example`, если файла ещё нет
-- поднимет PostgreSQL в Docker
-- установит зависимости фронтенда
-- откроет отдельное окно с Vite dev server
+- создаёт `.env`, если его ещё нет
+- создаёт `server/.env`, если его ещё нет
+- поднимает PostgreSQL в Docker
+- устанавливает зависимости frontend и backend
+- открывает отдельные окна для Fastify API и Vite dev server
 
 После запуска:
 
 - frontend: `http://localhost:5173`
+- api: `http://localhost:3000`
 - postgres: `localhost:5432`
-- database: `ftree_ladyzenko`
-- user: `ftree_user`
 
-Остановить контейнеры:
+Остановить docker-сервисы:
 
 ```bat
 stop-dev.bat
@@ -48,17 +46,23 @@ stop-dev.bat
 
 ## Переменные окружения
 
-Базовые значения лежат в `.env.example`:
+### Корневой `.env`
 
 ```env
 POSTGRES_DB=ftree_ladyzenko
 POSTGRES_USER=ftree_user
 POSTGRES_PASSWORD=ftree_local_password
 POSTGRES_PORT=5432
+API_PORT=3000
 APP_PORT=4173
 ```
 
-Для локальной или серверной установки скопируйте файл в `.env` и поменяйте пароль базы.
+### `server/.env`
+
+```env
+PORT=3000
+DATABASE_URL=postgres://ftree_user:ftree_local_password@localhost:5432/ftree_ladyzenko
+```
 
 ## Docker сервисы
 
@@ -68,15 +72,51 @@ APP_PORT=4173
 - volume: `ftree_postgres_data`
 - healthcheck: `pg_isready`
 
+### `api`
+
+- backend API на Fastify
+- подключается к PostgreSQL через `DATABASE_URL`
+- автоматически создаёт таблицу `trees`
+- сидит демо-деревья, если база пустая
+
 ### `web`
 
-- собирает фронтенд из `geodom-app/`
+- собирает frontend из `geodom-app/`
 - отдаёт статику через `nginx`
-- публикуется на порт `${APP_PORT}`
+- проксирует `/api/*` во внутренний контейнер `api`
+
+## Полезные команды
+
+### Локальная сборка frontend
+
+```bash
+cd geodom-app
+npm install
+npm run build
+```
+
+### Локальная сборка backend
+
+```bash
+cd server
+npm install
+npm run build
+```
+
+### Поднять весь стек в Docker
+
+```bash
+docker compose up -d --build postgres api web
+```
+
+### Проверить API
+
+```bash
+curl http://localhost:3000/api/health
+curl http://localhost:3000/api/trees
+```
 
 ## Production deploy на сервер
-
-На сервере можно выполнить:
 
 ```bash
 cd /var/www/ftree.ladyzenko.ru
@@ -86,31 +126,14 @@ chmod +x deploy.sh
 
 Скрипт:
 
-- клонирует репозиторий, если директория ещё пустая
-- обновит ветку `main`
-- создаст `.env` из `.env.example`, если нужно
-- поднимет `postgres` и `web` через Docker Compose
+- обновляет ветку `main`
+- создаёт `.env`, если его ещё нет
+- удаляет контейнеры текущего проекта перед пересборкой
+- поднимает `postgres`, `api`, `web`
 
-После деплоя frontend будет доступен на порту `${APP_PORT}` сервера, по умолчанию `4173`.
+## HTTPS
 
-## Полезные команды
+Для домена можно выпустить сертификат через `certbot --nginx`. После настройки nginx на сервере проект должен быть доступен по:
 
-Локальная сборка фронтенда:
-
-```bash
-cd geodom-app
-npm install
-npm run build
-```
-
-Поднять production-контейнеры локально:
-
-```bash
-docker compose up -d --build
-```
-
-Остановить production-контейнеры:
-
-```bash
-docker compose down
-```
+- `http://ftree.ladyzenko.ru`
+- `https://ftree.ladyzenko.ru`

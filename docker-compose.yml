@@ -17,6 +17,21 @@ services:
       timeout: 5s
       retries: 5
 
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: ftree-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    ports:
+      - "${API_PORT:-3000}:3000"
+
   web:
     build:
       context: ./geodom-app
@@ -24,8 +39,8 @@ services:
     container_name: ftree-web
     restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
+      api:
+        condition: service_started
     ports:
       - "${APP_PORT:-4173}:80"
 

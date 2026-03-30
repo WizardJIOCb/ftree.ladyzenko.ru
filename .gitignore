@@ -1,11 +1,14 @@
 # Root
 .env
 .env.local
+server/.env
 .DS_Store
 
 # App
 geodom-app/node_modules
 geodom-app/dist
+server/node_modules
+server/dist
 
 # IDE
 .idea

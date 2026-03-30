@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Background,
   BackgroundVariant,
@@ -41,7 +41,7 @@ function createEdges(relationships: Relationship[]): Edge[] {
     target: relationship.target,
     type: 'smoothstep',
     animated: relationship.kind === 'partner',
-    label: relationship.kind === 'partner' ? 'партнёрство' : undefined,
+    label: relationship.kind === 'partner' ? 'партнерство' : undefined,
     markerEnd: relationship.kind === 'partner' ? undefined : { type: MarkerType.ArrowClosed },
     style:
       relationship.kind === 'partner'
@@ -80,12 +80,56 @@ function getPrivacyLabel(mode: TreeSummary['privacy']) {
 }
 
 export default function App() {
-  const [trees] = useState(initialTrees)
-  const [activeTree, setActiveTree] = useState(initialTrees[0].id)
+  const [trees, setTrees] = useState(initialTrees)
+  const [activeTree, setActiveTree] = useState(initialTrees[0]?.id ?? '')
   const [persons, setPersons] = useState(initialPersons)
   const [relationships, setRelationships] = useState(initialRelationships)
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(initialPersons[0]?.id ?? null)
   const [search, setSearch] = useState('')
+  const [apiStatus, setApiStatus] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [treeTitle, setTreeTitle] = useState('')
+  const [treeSurname, setTreeSurname] = useState('')
+  const [isCreatingTree, setIsCreatingTree] = useState(false)
+
+  useEffect(() => {
+    let isCancelled = false
+
+    async function loadRemoteState() {
+      try {
+        const [healthResponse, treesResponse] = await Promise.all([
+          fetch('/api/health'),
+          fetch('/api/trees'),
+        ])
+
+        if (!healthResponse.ok || !treesResponse.ok) {
+          throw new Error('Remote API is unavailable')
+        }
+
+        const remoteTrees = (await treesResponse.json()) as TreeSummary[]
+        if (isCancelled) return
+
+        setApiStatus('ready')
+
+        if (remoteTrees.length > 0) {
+          setTrees(remoteTrees)
+          setActiveTree((current) => {
+            const hasCurrent = remoteTrees.some((tree) => tree.id === current)
+            return hasCurrent ? current : remoteTrees[0].id
+          })
+        }
+      } catch {
+        if (!isCancelled) {
+          setApiStatus('error')
+        }
+      }
+    }
+
+    void loadRemoteState()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [])
 
   const selectedPerson = persons.find((person) => person.id === selectedPersonId) ?? null
 
@@ -93,9 +137,7 @@ export default function App() {
     const query = search.trim().toLowerCase()
     if (!query) return trees
 
-    return trees.filter((tree) => {
-      return `${tree.title} ${tree.surname}`.toLowerCase().includes(query)
-    })
+    return trees.filter((tree) => `${tree.title} ${tree.surname}`.toLowerCase().includes(query))
   }, [search, trees])
 
   const nodes = useMemo(
@@ -155,7 +197,7 @@ export default function App() {
         id: edge.id,
         source: edge.source,
         target: edge.target,
-        kind: edge.label === 'партнёрство' ? 'partner' : 'parent-child',
+        kind: edge.label === 'партнерство' ? 'partner' : 'parent-child',
       }))
     })
   }
@@ -172,14 +214,14 @@ export default function App() {
     if (!selectedPerson) return
 
     const id = crypto.randomUUID()
-    const baseName = kind === 'child' ? 'Новый' : 'Партнёр'
+    const baseName = kind === 'child' ? 'Новый' : 'Партнер'
     const nextPerson: Person = {
       id,
       firstName: baseName,
       lastName: selectedPerson.lastName,
       years: kind === 'child' ? '2000-н.в.' : '1970-н.в.',
       place: selectedPerson.place,
-      note: kind === 'child' ? 'Добавлен из правой панели.' : 'Добавлен как партнёр выбранной персоны.',
+      note: kind === 'child' ? 'Добавлен из правой панели.' : 'Добавлен как партнер выбранной персоны.',
       branch: selectedPerson.branch,
       generation: kind === 'child' ? selectedPerson.generation + 1 : selectedPerson.generation,
       x: selectedPerson.x + (kind === 'child' ? 60 : 260),
@@ -199,16 +241,77 @@ export default function App() {
     setSelectedPersonId(id)
   }
 
+  async function createTree() {
+    if (!treeTitle.trim() || !treeSurname.trim()) return
+
+    setIsCreatingTree(true)
+
+    try {
+      const response = await fetch('/api/trees', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: treeTitle.trim(),
+          surname: treeSurname.trim(),
+          privacy: 'private',
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to create tree')
+      }
+
+      const created = (await response.json()) as TreeSummary
+      setTrees((current) => [created, ...current])
+      setActiveTree(created.id)
+      setTreeTitle('')
+      setTreeSurname('')
+      setApiStatus('ready')
+    } catch {
+      setApiStatus('error')
+    } finally {
+      setIsCreatingTree(false)
+    }
+  }
+
   return (
     <div className="shell">
       <aside className="sidebar">
         <div className="brand-card">
-          <span className="eyebrow">Geodom</span>
+          <div className="brand-card__top">
+            <span className="eyebrow">Geodom</span>
+            <span className={`status-pill status-pill--${apiStatus}`}>
+              {apiStatus === 'loading' && 'API подключается'}
+              {apiStatus === 'ready' && 'API и база подключены'}
+              {apiStatus === 'error' && 'API недоступен'}
+            </span>
+          </div>
           <h1>Визуальная мастерская семейного дерева</h1>
           <p>
-            Лёгкий интерфейс для сборки, просмотра и публикации genealogical tree без тяжёлого
-            ощущения архивной системы.
+            Легкий интерфейс для сборки, просмотра и публикации семейного дерева без ощущения
+            тяжелой архивной системы.
           </p>
+        </div>
+
+        <div className="helper-card helper-card--tight">
+          <strong>Быстро создать дерево</strong>
+          <div className="quick-form">
+            <input
+              value={treeTitle}
+              onChange={(event) => setTreeTitle(event.target.value)}
+              placeholder="Название дерева"
+            />
+            <input
+              value={treeSurname}
+              onChange={(event) => setTreeSurname(event.target.value)}
+              placeholder="Основная фамилия"
+            />
+            <button disabled={isCreatingTree} onClick={() => void createTree()} type="button">
+              {isCreatingTree ? 'Сохраняем...' : 'Создать в PostgreSQL'}
+            </button>
+          </div>
         </div>
 
         <label className="search-field">
@@ -269,10 +372,10 @@ export default function App() {
               Автораскладка
             </button>
             <button onClick={() => addPerson('child')} type="button">
-              Добавить ребёнка
+              Добавить ребенка
             </button>
             <button onClick={() => addPerson('partner')} type="button">
-              Добавить партнёра
+              Добавить партнера
             </button>
           </div>
         </header>
@@ -282,11 +385,15 @@ export default function App() {
             <div className="canvas-overlay">
               <div>
                 <strong>Пастельный режим интерфейса</strong>
-                <span>Мягкие тёплые фоны, спокойные линии и минимум отвлекающих акцентов.</span>
+                <span>Мягкие теплые фоны, спокойные линии и минимум отвлекающих акцентов.</span>
               </div>
               <div>
                 <strong>Что уже работает</strong>
                 <span>Drag, zoom, pan, выбор персоны, быстрые добавления и авторасстановка.</span>
+              </div>
+              <div>
+                <strong>Backend уже подключен</strong>
+                <span>Список деревьев приходит из Fastify API и хранится в PostgreSQL.</span>
               </div>
             </div>
 
@@ -374,18 +481,16 @@ export default function App() {
 
                 <div className="detail-actions">
                   <button onClick={() => addPerson('child')} type="button">
-                    Быстро добавить ребёнка
+                    Быстро добавить ребенка
                   </button>
                   <button onClick={() => addPerson('partner')} type="button">
-                    Добавить партнёра
+                    Добавить партнера
                   </button>
                 </div>
 
                 <div className="helper-card">
                   <strong>Следующий шаг для MVP</strong>
-                  <p>
-                    Подключить backend, хранение деревьев, GEDCOM import/export и роли доступа.
-                  </p>
+                  <p>Теперь можно добавлять auth, GEDCOM import/export и сохранение структуры редактора.</p>
                 </div>
               </>
             ) : (

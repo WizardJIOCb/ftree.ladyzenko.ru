@@ -28,4 +28,6 @@ if [ ! -f .env ]; then
   cp .env.example .env
 fi
 
-$DOCKER_COMPOSE_CMD up -d --build postgres web
+docker rm -f ftree-postgres ftree-api ftree-web >/dev/null 2>&1 || true
+
+$DOCKER_COMPOSE_CMD up -d --build postgres api web
