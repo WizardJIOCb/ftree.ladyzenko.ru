@@ -62,7 +62,7 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
   const [shouldFitView, setShouldFitView] = useState(true)
   const [creatingPerson, setCreatingPerson] = useState(false)
   const [activeAutoMode, setActiveAutoMode] = useState<AutoLayoutMode>('auto1')
-  const [activeLayoutPreset, setActiveLayoutPreset] = useState<'relayout' | AutoLayoutMode>('auto1')
+  const [activeLayoutPreset, setActiveLayoutPreset] = useState<'relayout' | AutoLayoutMode>('relayout')
   const [autoLayouting, setAutoLayouting] = useState(false)
   const [savingPerson, setSavingPerson] = useState(false)
   const [savingTree, setSavingTree] = useState(false)
@@ -211,6 +211,8 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
       setEditingRelationshipId(null)
       setIsTreePanelOpen(false)
       setIsPersonListOpen(false)
+      setActiveAutoMode('auto1')
+      setActiveLayoutPreset('relayout')
 
       try {
         const response = await fetch(`/api/trees/${treeId}/editor`)
