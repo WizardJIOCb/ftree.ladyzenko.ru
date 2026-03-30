@@ -1,7 +1,7 @@
 import { memo } from 'react'
 import { Handle, Position } from '@xyflow/react'
 
-type CompactPersonNodeData = {
+export type CompactPersonNodeData = {
   label: string
   accent: 'blue' | 'pink' | 'slate'
 }

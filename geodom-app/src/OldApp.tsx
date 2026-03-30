@@ -281,7 +281,7 @@ export function OldApp() {
       <aside className="sidebar">
         <div className="brand-card">
           <div className="brand-card__top">
-            <span className="eyebrow">Geodom</span>
+            <span className="eyebrow">FTree</span>
             <span className={`status-pill status-pill--${apiStatus}`}>
               {apiStatus === 'loading' && 'API подключается'}
               {apiStatus === 'ready' && 'API и база подключены'}

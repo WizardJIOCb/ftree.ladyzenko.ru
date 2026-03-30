@@ -20,7 +20,7 @@ await registerTreeRoutes(app)
 
 app.get('/api', async () => ({
   ok: true,
-  service: 'geodom-api',
+  service: 'ftree-api',
 }))
 
 async function close() {

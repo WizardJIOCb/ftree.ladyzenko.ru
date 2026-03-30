@@ -1,4 +1,4 @@
-# Geodom Prototype
+# FTree Prototype
 
 Репозиторий содержит первый живой прототип `ftree.ladyzenko.ru`: фронтенд визуального редактора семейного дерева, backend API на Fastify и PostgreSQL в Docker.
 

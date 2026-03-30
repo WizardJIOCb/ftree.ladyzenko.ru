@@ -35,10 +35,10 @@ if errorlevel 1 (
 )
 
 echo Launching Fastify API server...
-start "Geodom API Server" cmd /k "cd /d %~dp0server && npm run dev"
+start "FTree API Server" cmd /k "cd /d %~dp0server && npm run dev"
 
 echo Launching Vite dev server...
-start "Geodom Dev Server" cmd /k "cd /d %~dp0geodom-app && npm run dev -- --host 0.0.0.0"
+start "FTree Dev Server" cmd /k "cd /d %~dp0geodom-app && npm run dev -- --host 0.0.0.0"
 
 echo.
 echo Local services:

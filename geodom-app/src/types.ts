@@ -30,3 +30,26 @@ export type TreeSummary = {
   lastUpdated: string
   privacy: 'private' | 'shared' | 'public'
 }
+
+export type TreePersonAccent = 'blue' | 'pink' | 'slate'
+
+export type TreePerson = {
+  id: string
+  label: string
+  accent: TreePersonAccent
+  x: number
+  y: number
+}
+
+export type TreeEditorRelationship = {
+  id: string
+  source: string
+  target: string
+  kind: RelationshipKind
+}
+
+export type TreeEditorPayload = {
+  tree: TreeSummary
+  persons: TreePerson[]
+  relationships: TreeEditorRelationship[]
+}

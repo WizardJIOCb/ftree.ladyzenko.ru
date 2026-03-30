@@ -8,7 +8,7 @@ export async function registerHealthRoutes(app: FastifyInstance) {
 
     return {
       ok: true,
-      service: 'geodom-api',
+      service: 'ftree-api',
       database: 'connected',
       checkedAt: new Date().toISOString(),
     }

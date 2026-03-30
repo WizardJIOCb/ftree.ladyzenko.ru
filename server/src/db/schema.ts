@@ -9,4 +9,26 @@ export const trees = pgTable('trees', {
   lastUpdated: timestamp('last_updated', { withTimezone: false }).notNull().defaultNow(),
 })
 
+export const treePersons = pgTable('tree_persons', {
+  id: text('id').primaryKey(),
+  treeId: text('tree_id').notNull(),
+  label: text('label').notNull(),
+  accent: text('accent').notNull().default('blue'),
+  x: integer('x').notNull().default(0),
+  y: integer('y').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: false }).notNull().defaultNow(),
+})
+
+export const treeRelationships = pgTable('tree_relationships', {
+  id: text('id').primaryKey(),
+  treeId: text('tree_id').notNull(),
+  sourceId: text('source_id').notNull(),
+  targetId: text('target_id').notNull(),
+  kind: text('kind').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+})
+
 export type TreeRow = typeof trees.$inferSelect
+export type TreePersonRow = typeof treePersons.$inferSelect
+export type TreeRelationshipRow = typeof treeRelationships.$inferSelect

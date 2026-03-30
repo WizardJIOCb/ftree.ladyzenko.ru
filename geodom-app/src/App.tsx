@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   Background,
   BackgroundVariant,
+  MarkerType,
   ReactFlow,
   applyNodeChanges,
   type Edge,
@@ -12,101 +13,80 @@ import {
 import { BrowserRouter, Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { initialTrees } from './data'
-import { CompactPersonNode } from './components/CompactPersonNode'
+import { CompactPersonNode, type CompactPersonNodeData } from './components/CompactPersonNode'
 import { OldApp } from './OldApp'
-import type { TreeSummary } from './types'
+import type { TreeEditorPayload, TreeEditorRelationship, TreePerson, TreeSummary } from './types'
 
 type ApiStatus = 'loading' | 'ready' | 'error'
+type EditorStatus = 'loading' | 'ready' | 'error'
 
 type TreeStore = {
   trees: TreeSummary[]
   apiStatus: ApiStatus
   createTree: (input?: Partial<Pick<TreeSummary, 'title' | 'surname' | 'privacy'>>) => Promise<TreeSummary | null>
+  reloadTrees: () => Promise<void>
 }
 
 const compactNodeTypes = {
   compactPerson: CompactPersonNode,
 }
 
-function createEditorNodes(): Node[] {
-  return [
-    {
-      id: 'left',
-      type: 'compactPerson',
-      position: { x: 390, y: 430 },
-      data: { label: 'Иван Ладыженко', accent: 'blue' },
+function createEditorNodes(persons: TreePerson[]): Node<CompactPersonNodeData>[] {
+  return persons.map((person) => ({
+    id: person.id,
+    type: 'compactPerson',
+    position: { x: person.x, y: person.y },
+    data: {
+      label: person.label,
+      accent: person.accent,
     },
-    {
-      id: 'top',
-      type: 'compactPerson',
-      position: { x: 528, y: 430 },
-      data: { label: '2 2', accent: 'blue' },
-    },
-    {
-      id: 'right',
-      type: 'compactPerson',
-      position: { x: 720, y: 430 },
-      data: { label: '3 3', accent: 'slate' },
-    },
-    {
-      id: 'bottom',
-      type: 'compactPerson',
-      position: { x: 560, y: 590 },
-      data: { label: '2 2', accent: 'pink' },
-    },
-  ]
+  }))
 }
 
-function createEditorEdges(): Edge[] {
-  return [
-    {
-      id: 'vertical',
-      source: 'top',
-      target: 'bottom',
-      type: 'smoothstep',
-      style: { stroke: '#d9d3cd', strokeWidth: 1.4 },
-    },
-    {
-      id: 'angled',
-      source: 'right',
-      target: 'bottom',
-      type: 'smoothstep',
-      style: { stroke: '#d9d3cd', strokeWidth: 1.4 },
-    },
-  ]
+function createEditorEdges(relationships: TreeEditorRelationship[]): Edge[] {
+  return relationships.map((relationship) => ({
+    id: relationship.id,
+    source: relationship.source,
+    target: relationship.target,
+    type: 'smoothstep',
+    animated: relationship.kind === 'partner',
+    markerEnd: relationship.kind === 'partner' ? undefined : { type: MarkerType.ArrowClosed, color: '#d9d3cd' },
+    style:
+      relationship.kind === 'partner'
+        ? { stroke: '#cbb8a8', strokeWidth: 1.4, strokeDasharray: '5 4' }
+        : { stroke: '#d9d3cd', strokeWidth: 1.4 },
+  }))
+}
+
+function extractLayout(nodes: Node[]) {
+  return nodes.map((node) => ({
+    id: node.id,
+    x: Math.round(node.position.x),
+    y: Math.round(node.position.y),
+  }))
 }
 
 function useTreeStore(): TreeStore {
   const [trees, setTrees] = useState(initialTrees)
   const [apiStatus, setApiStatus] = useState<ApiStatus>('loading')
 
-  useEffect(() => {
-    let cancelled = false
-
-    async function loadTrees() {
-      try {
-        const response = await fetch('/api/trees')
-        if (!response.ok) {
-          throw new Error('Unable to load trees')
-        }
-
-        const payload = (await response.json()) as TreeSummary[]
-        if (!cancelled) {
-          setTrees(payload.length > 0 ? payload : initialTrees)
-          setApiStatus('ready')
-        }
-      } catch {
-        if (!cancelled) {
-          setApiStatus('error')
-        }
+  async function reloadTrees() {
+    try {
+      const response = await fetch('/api/trees')
+      if (!response.ok) {
+        throw new Error('Unable to load trees')
       }
-    }
 
-    void loadTrees()
-
-    return () => {
-      cancelled = true
+      const payload = (await response.json()) as TreeSummary[]
+      setTrees(payload.length > 0 ? payload : initialTrees)
+      setApiStatus('ready')
+    } catch {
+      setApiStatus('error')
     }
+  }
+
+  useEffect(() => {
+    void reloadTrees()
   }, [])
 
   async function createTree(input?: Partial<Pick<TreeSummary, 'title' | 'surname' | 'privacy'>>) {
@@ -137,7 +117,7 @@ function useTreeStore(): TreeStore {
     }
   }
 
-  return { trees, apiStatus, createTree }
+  return { trees, apiStatus, createTree, reloadTrees }
 }
 
 function TreeLogo() {
@@ -281,7 +261,7 @@ function PageShell({ children }: { children: ReactNode }) {
       <header className="geodom-header">
         <Link className="geodom-brand" to="/trees">
           <TreeLogo />
-          <span>Geodom</span>
+          <span>FTree</span>
         </Link>
 
         <nav className="geodom-nav">
@@ -373,7 +353,7 @@ function TreesPage({ trees, createTree }: TreeStore) {
         </div>
         <button className="primary-action" disabled={creating} onClick={() => void handleCreate()} type="button">
           <PlusIcon />
-          <span>{creating ? 'Создаем...' : 'Новое дерево'}</span>
+          <span>{creating ? 'Создаём...' : 'Новое дерево'}</span>
         </button>
       </section>
 
@@ -422,28 +402,127 @@ function CatalogPage({ trees }: Pick<TreeStore, 'trees'>) {
   )
 }
 
-function EditorPage({ trees }: Pick<TreeStore, 'trees'>) {
+function EditorPage({ trees, reloadTrees }: Pick<TreeStore, 'trees' | 'reloadTrees'>) {
   const navigate = useNavigate()
   const { treeId = '' } = useParams()
-  const [nodes, setNodes] = useState<Node[]>(() => createEditorNodes())
-  const [edges] = useState<Edge[]>(() => createEditorEdges())
+  const [nodes, setNodes] = useState<Node[]>([])
+  const [edges, setEdges] = useState<Edge[]>([])
   const [flow, setFlow] = useState<ReactFlowInstance | null>(null)
   const [zoomPercent, setZoomPercent] = useState(63)
+  const [editorStatus, setEditorStatus] = useState<EditorStatus>('loading')
+  const [creatingPerson, setCreatingPerson] = useState(false)
+  const [titleFromEditor, setTitleFromEditor] = useState('')
 
-  const tree = trees.find((entry) => entry.id === treeId) ?? trees[0] ?? null
+  const tree = trees.find((entry) => entry.id === treeId) ?? null
+  const treeIndex = trees.findIndex((entry) => entry.id === treeId)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadEditor() {
+      if (!treeId) return
+
+      setEditorStatus('loading')
+      setTitleFromEditor('')
+
+      try {
+        const response = await fetch(`/api/trees/${treeId}/editor`)
+        if (!response.ok) {
+          throw new Error('Unable to load tree editor')
+        }
+
+        const payload = (await response.json()) as TreeEditorPayload
+        if (cancelled) {
+          return
+        }
+
+        setNodes(createEditorNodes(payload.persons))
+        setEdges(createEditorEdges(payload.relationships))
+        setTitleFromEditor(payload.tree.title)
+        setEditorStatus('ready')
+      } catch {
+        if (!cancelled) {
+          setNodes([])
+          setEdges([])
+          setTitleFromEditor(tree?.title ?? '')
+          setEditorStatus('error')
+        }
+      }
+    }
+
+    void loadEditor()
+
+    return () => {
+      cancelled = true
+    }
+  }, [tree?.title, treeId])
 
   useEffect(() => {
     if (!flow) return
     setZoomPercent(Math.round(flow.getViewport().zoom * 100))
   }, [flow])
 
-  if (!tree) {
-    return <Navigate to="/trees" replace />
-  }
+  useEffect(() => {
+    if (!flow || nodes.length === 0) return
+    void flow.fitView({ duration: 220, padding: 0.35 })
+    window.setTimeout(() => {
+      setZoomPercent(Math.round(flow.getViewport().zoom * 100))
+    }, 260)
+  }, [flow, nodes])
+
+  const editorTitle = titleFromEditor || tree?.title || 'Дерево'
 
   function syncZoom() {
     if (!flow) return
     setZoomPercent(Math.round(flow.getViewport().zoom * 100))
+  }
+
+  async function persistLayout(nextNodes: Node[]) {
+    if (!treeId) return
+
+    try {
+      await fetch(`/api/trees/${treeId}/layout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          persons: extractLayout(nextNodes),
+        }),
+      })
+      void reloadTrees()
+    } catch {
+      return
+    }
+  }
+
+  async function addCompactPerson() {
+    if (!treeId || creatingPerson) return
+
+    setCreatingPerson(true)
+
+    try {
+      const response = await fetch(`/api/trees/${treeId}/persons`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      })
+
+      if (!response.ok) {
+        throw new Error('Unable to create person')
+      }
+
+      const created = (await response.json()) as TreePerson
+      setNodes((current) => [...current, ...createEditorNodes([created])])
+      setEditorStatus('ready')
+      await reloadTrees()
+    } catch {
+      setEditorStatus('error')
+    } finally {
+      setCreatingPerson(false)
+    }
   }
 
   function zoomIn() {
@@ -465,33 +544,20 @@ function EditorPage({ trees }: Pick<TreeStore, 'trees'>) {
   }
 
   function relayout() {
-    setNodes((current) =>
-      current.map((node, index) => ({
-        ...node,
-        position: {
-          x: 390 + (index % 3) * 165 - (index === 3 ? 30 : 0),
-          y: 430 + Math.floor(index / 3) * 160,
-        },
-      })),
-    )
+    const nextNodes = nodes.map((node, index) => ({
+      ...node,
+      position: {
+        x: 390 + (index % 3) * 165 - (index >= 3 ? 20 : 0),
+        y: 430 + Math.floor(index / 3) * 160,
+      },
+    }))
+
+    setNodes(nextNodes)
+    void persistLayout(nextNodes)
   }
 
-  function addCompactPerson() {
-    const accents: Array<'blue' | 'pink' | 'slate'> = ['blue', 'pink', 'slate']
-    const nextIndex = nodes.length + 1
-
-    setNodes((current) => [
-      ...current,
-      {
-        id: crypto.randomUUID(),
-        type: 'compactPerson',
-        position: { x: 420 + (nextIndex % 2) * 180, y: 280 + Math.floor(nextIndex / 2) * 115 },
-        data: {
-          label: `${nextIndex} ${nextIndex}`,
-          accent: accents[nextIndex % accents.length],
-        },
-      },
-    ])
+  if (!treeId) {
+    return <Navigate to="/trees" replace />
   }
 
   return (
@@ -500,14 +566,14 @@ function EditorPage({ trees }: Pick<TreeStore, 'trees'>) {
         <button className="floating-button" onClick={() => navigate('/trees')} type="button" aria-label="Назад">
           <ArrowLeftIcon />
         </button>
-        <span className="floating-badge">1</span>
+        <span className="floating-badge">{treeIndex >= 0 ? treeIndex + 1 : 1}</span>
       </div>
 
       <div className="editor-top editor-top--center">
         <div className="floating-toolbar">
-          <button onClick={addCompactPerson} type="button">
+          <button onClick={() => void addCompactPerson()} type="button">
             <PlusIcon />
-            <span>Персона</span>
+            <span>{creatingPerson ? 'Создаём...' : 'Персона'}</span>
           </button>
           <div className="floating-toolbar__divider" />
           <button onClick={relayout} type="button">
@@ -544,6 +610,7 @@ function EditorPage({ trees }: Pick<TreeStore, 'trees'>) {
           nodeTypes={compactNodeTypes}
           onInit={setFlow}
           onMoveEnd={() => syncZoom()}
+          onNodeDragStop={(_, node) => void persistLayout([node])}
           onNodesChange={(changes: NodeChange[]) => setNodes((current) => applyNodeChanges(changes, current))}
           nodesDraggable
           panOnDrag
@@ -552,6 +619,17 @@ function EditorPage({ trees }: Pick<TreeStore, 'trees'>) {
         >
           <Background color="#e0cdbb" gap={18} size={1.2} variant={BackgroundVariant.Dots} />
         </ReactFlow>
+
+        {editorStatus !== 'ready' && (
+          <div className="editor-status-card">
+            <strong>{editorStatus === 'loading' ? 'Загружаем дерево' : 'Не удалось открыть дерево'}</strong>
+            <span>
+              {editorStatus === 'loading'
+                ? 'Подтягиваем персон и связи из базы проекта.'
+                : 'Проверьте backend или обновите страницу.'}
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="editor-corner editor-corner--left">
@@ -562,7 +640,7 @@ function EditorPage({ trees }: Pick<TreeStore, 'trees'>) {
         <span className="floating-badge">{nodes.length} персон</span>
       </div>
 
-      <div className="editor-title">{tree.title}</div>
+      <div className="editor-title">{editorTitle}</div>
     </section>
   )
 }
@@ -573,9 +651,9 @@ function NewApp() {
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/trees" replace />} />
-      <Route path="/trees" element={<TreesPage trees={store.trees} apiStatus={store.apiStatus} createTree={store.createTree} />} />
+      <Route path="/trees" element={<TreesPage trees={store.trees} apiStatus={store.apiStatus} createTree={store.createTree} reloadTrees={store.reloadTrees} />} />
       <Route path="/catalog" element={<CatalogPage trees={store.trees} />} />
-      <Route path="/trees/:treeId" element={<EditorPage trees={store.trees} />} />
+      <Route path="/trees/:treeId" element={<EditorPage trees={store.trees} reloadTrees={store.reloadTrees} />} />
       <Route path="/old" element={<OldApp />} />
       <Route path="*" element={<Navigate to="/trees" replace />} />
     </Routes>
