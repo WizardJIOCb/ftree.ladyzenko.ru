@@ -36,7 +36,8 @@ type PersonListSidebarProps = {
   persons: TreePerson[]
   selectedPersonId: string | null
   onClose: () => void
-  onOpenPerson: (personId: string) => void
+  onFocusPerson: (personId: string) => void
+  onEditPerson: (personId: string) => void
   onDeletePerson: (personId: string) => void
 }
 
@@ -151,12 +152,12 @@ export function PersonListSidebar(props: PersonListSidebarProps) {
         {props.persons.length === 0 && <p className="editor-sidebar__hint">Пока нет персон.</p>}
         {props.persons.map((person) => (
           <div key={person.id} className={`editor-person-list__item${props.selectedPersonId === person.id ? ' is-selected' : ''}`}>
-            <button className="editor-person-list__main" onClick={() => props.onOpenPerson(person.id)} type="button">
+            <button className="editor-person-list__main" onClick={() => props.onFocusPerson(person.id)} type="button">
               <strong>{person.label}</strong>
               <span>{person.years || person.place || person.branch || 'Без уточнений'}</span>
             </button>
             <div className="editor-person-list__actions">
-              <button className="editor-sidebar__secondary editor-sidebar__secondary--positive" onClick={() => props.onOpenPerson(person.id)} type="button">Изменить</button>
+              <button className="editor-sidebar__secondary editor-sidebar__secondary--positive" onClick={() => props.onEditPerson(person.id)} type="button">Изменить</button>
               <button className="editor-sidebar__danger" onClick={() => props.onDeletePerson(person.id)} type="button">Удалить</button>
             </div>
           </div>
