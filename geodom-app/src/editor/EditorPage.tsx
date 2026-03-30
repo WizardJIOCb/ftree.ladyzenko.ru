@@ -34,6 +34,8 @@ const MAX_ZOOM = 1.7
 const MOBILE_INITIAL_ZOOM = 0.9
 type TouchPointLike = { clientX: number; clientY: number }
 
+type SavedLayoutMap = Record<string, { x: number; y: number }>
+
 function normalizeSearchText(value: string) {
   return value
     .toLowerCase()
@@ -41,6 +43,10 @@ function normalizeSearchText(value: string) {
     .replace(/[^\p{L}\p{N}\s-]+/gu, '')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+function captureSavedLayout(sourcePersons: TreePerson[]): SavedLayoutMap {
+  return Object.fromEntries(sourcePersons.map((person) => [person.id, { x: person.x, y: person.y }]))
 }
 
 export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloadTrees: () => Promise<void> }) {
@@ -52,6 +58,7 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
   const [editorStatus, setEditorStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [editorTree, setEditorTree] = useState<TreeSummary | null>(null)
   const [persons, setPersons] = useState<TreePerson[]>([])
+  const [savedLayout, setSavedLayout] = useState<SavedLayoutMap>({})
   const [relationships, setRelationships] = useState<TreeEditorRelationship[]>([])
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null)
   const [isPersonEditorOpen, setIsPersonEditorOpen] = useState(false)
@@ -270,6 +277,7 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
 
         setEditorTree(payload.tree)
         setPersons(payload.persons)
+        setSavedLayout(captureSavedLayout(payload.persons))
         setRelationships(payload.relationships)
         setEditorStatus('ready')
         setShouldFitView(true)
@@ -279,6 +287,7 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
         setEditorStatus('error')
         setEditorTree(fallbackTree)
         setPersons([])
+        setSavedLayout({})
         setRelationships([])
       }
     }
@@ -792,6 +801,7 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
 
       const created = (await response.json()) as TreePerson
       setPersons((current) => [...current, created])
+      setSavedLayout((current) => ({ ...current, [created.id]: { x: created.x, y: created.y } }))
       setSelectedPersonId(created.id)
       setIsPersonEditorOpen(true)
       setIsTreePanelOpen(false)
@@ -825,6 +835,11 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
       if (!response.ok) throw new Error('Unable to delete person')
 
       setPersons((current) => current.filter((item) => item.id !== personId))
+      setSavedLayout((current) => {
+        const nextLayout = { ...current }
+        delete nextLayout[personId]
+        return nextLayout
+      })
       setRelationships((current) => current.filter((item) => item.source !== personId && item.target !== personId))
 
       if (selectedPersonId === personId) {
@@ -958,6 +973,7 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
       if (!layoutResponse.ok) throw new Error('Unable to save tree layout')
 
       setEditorTree((await response.json()) as TreeSummary)
+      setSavedLayout(captureSavedLayout(persons))
       await reloadTrees()
     } catch {
       setTreeError('Не удалось сохранить метаданные дерева.')
@@ -1154,16 +1170,9 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
 
   function relayout() {
     setActiveLayoutPreset('relayout')
-    const columns = Math.max(2, Math.ceil(Math.sqrt(Math.max(persons.length, 1))))
-    const nextPersons = persons.map((person, index) => {
-      const column = index % columns
-      const row = Math.floor(index / columns)
-
-      return {
-        ...person,
-        x: 300 + column * 190 + (row % 2) * 16,
-        y: 240 + row * 150,
-      }
+    const nextPersons = persons.map((person) => {
+      const savedPosition = savedLayout[person.id]
+      return savedPosition ? { ...person, x: savedPosition.x, y: savedPosition.y } : person
     })
 
     setPersons(nextPersons)
