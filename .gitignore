@@ -1,0 +1,13 @@
+# Root
+.env
+.env.local
+.DS_Store
+
+# App
+geodom-app/node_modules
+geodom-app/dist
+
+# IDE
+.idea
+.vscode/*
+!.vscode/extensions.json
