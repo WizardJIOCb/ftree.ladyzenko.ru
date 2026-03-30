@@ -29,6 +29,11 @@ const personParamsSchema = z.object({
   personId: z.string().min(1),
 })
 
+const relationshipParamsSchema = z.object({
+  treeId: z.string().min(1),
+  relationshipId: z.string().min(1),
+})
+
 const createPersonSchema = z.object({
   firstName: z.string().trim().max(60).optional(),
   lastName: z.string().trim().max(60).optional(),
@@ -399,6 +404,37 @@ export async function registerTreeRoutes(app: FastifyInstance) {
       .where(eq(trees.id, params.data.treeId))
 
     return reply.code(201).send(mapRelationship(created))
+  })
+
+  app.delete('/api/trees/:treeId/relationships/:relationshipId', async (request, reply) => {
+    const params = relationshipParamsSchema.safeParse(request.params)
+
+    if (!params.success) {
+      return reply.code(400).send({ ok: false, error: 'Invalid payload' })
+    }
+
+    const [relationship] = await db
+      .select()
+      .from(treeRelationships)
+      .where(and(eq(treeRelationships.treeId, params.data.treeId), eq(treeRelationships.id, params.data.relationshipId)))
+      .limit(1)
+
+    if (!relationship) {
+      return reply.code(404).send({ ok: false, error: 'Relationship not found' })
+    }
+
+    await db
+      .delete(treeRelationships)
+      .where(and(eq(treeRelationships.treeId, params.data.treeId), eq(treeRelationships.id, params.data.relationshipId)))
+
+    await db
+      .update(trees)
+      .set({
+        lastUpdated: new Date(),
+      })
+      .where(eq(trees.id, params.data.treeId))
+
+    return { ok: true }
   })
 
   app.post('/api/trees/:treeId/layout', async (request, reply) => {

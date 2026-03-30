@@ -3,9 +3,9 @@ import { Background, BackgroundVariant, ReactFlow, applyNodeChanges, type NodeCh
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 
 import { CompactPersonNode } from '../components/CompactPersonNode'
-import type { RelationshipKind, TreeEditorPayload, TreeEditorRelationship, TreePerson, TreeSummary } from '../types'
+import type { TreeEditorPayload, TreeEditorRelationship, TreePerson, TreeSummary } from '../types'
 import { ArrowLeftIcon, FitIcon, GearIcon, PlusIcon, SparkIcon, ZoomInIcon, ZoomOutIcon } from '../ui/icons'
-import { PersonListSidebar, PersonSidebar, TreeSidebar } from './EditorSidebar'
+import { PersonListSidebar, PersonSidebar, TreeSidebar, type RelationshipRole } from './EditorSidebar'
 import { createEditorEdges, createEditorNodes, emptyPersonForm, emptyTreeForm, extractLayout, type PersonFormState, type TreeFormState } from './utils'
 
 const compactNodeTypes = { compactPerson: CompactPersonNode }
@@ -34,7 +34,10 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
   const [relationshipError, setRelationshipError] = useState('')
   const [personForm, setPersonForm] = useState<PersonFormState>(emptyPersonForm)
   const [treeForm, setTreeForm] = useState<TreeFormState>(emptyTreeForm)
-  const [relationshipForm, setRelationshipForm] = useState<{ targetId: string; kind: RelationshipKind }>({ targetId: '', kind: 'parent-child' })
+  const [relationshipForm, setRelationshipForm] = useState<{ targetId: string; role: RelationshipRole }>({
+    targetId: '',
+    role: 'child',
+  })
 
   const fallbackTree = trees.find((entry) => entry.id === treeId) ?? null
   const currentTree = editorTree ?? fallbackTree
@@ -50,10 +53,14 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
       .filter((item) => item.source === selectedPersonId || item.target === selectedPersonId)
       .map((item) => {
         const otherId = item.source === selectedPersonId ? item.target : item.source
+        const role: RelationshipRole = item.kind === 'partner' ? 'partner' : item.source === selectedPersonId ? 'child' : 'parent'
+
         return {
           id: item.id,
           kind: item.kind,
           label: persons.find((person) => person.id === otherId)?.label ?? 'Неизвестная персона',
+          role,
+          personId: otherId,
         }
       })
   }, [persons, relationships, selectedPersonId])
@@ -133,7 +140,7 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
 
   useEffect(() => {
     setRelationshipForm((current) => ({
-      kind: current.kind,
+      role: current.role,
       targetId: relationshipTargets.some((person) => person.id === current.targetId) ? current.targetId : relationshipTargets[0]?.id ?? '',
     }))
   }, [relationshipTargets])
@@ -287,9 +294,7 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
         method: 'DELETE',
       })
 
-      if (!response.ok) {
-        throw new Error('Unable to delete person')
-      }
+      if (!response.ok) throw new Error('Unable to delete person')
 
       setPersons((current) => current.filter((item) => item.id !== personId))
       setRelationships((current) => current.filter((item) => item.source !== personId && item.target !== personId))
@@ -360,14 +365,17 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
     setRelationshipError('')
 
     try {
+      const payload =
+        relationshipForm.role === 'parent'
+          ? { sourceId: relationshipForm.targetId, targetId: selectedPerson.id, kind: 'parent-child' as const }
+          : relationshipForm.role === 'child'
+            ? { sourceId: selectedPerson.id, targetId: relationshipForm.targetId, kind: 'parent-child' as const }
+            : { sourceId: selectedPerson.id, targetId: relationshipForm.targetId, kind: 'partner' as const }
+
       const response = await fetch(`/api/trees/${treeId}/relationships`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sourceId: selectedPerson.id,
-          targetId: relationshipForm.targetId,
-          kind: relationshipForm.kind,
-        }),
+        body: JSON.stringify(payload),
       })
 
       if (!response.ok) throw new Error('Unable to create relationship')
@@ -379,6 +387,29 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
       setRelationshipError('Связь уже существует или не может быть создана.')
     } finally {
       setLinkingRelationship(false)
+    }
+  }
+
+  async function deleteRelationship(relationshipId: string) {
+    if (!treeId) return
+
+    if (!window.confirm('Удалить эту связь?')) {
+      return
+    }
+
+    setRelationshipError('')
+
+    try {
+      const response = await fetch(`/api/trees/${treeId}/relationships/${relationshipId}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) throw new Error('Unable to delete relationship')
+
+      setRelationships((current) => current.filter((item) => item.id !== relationshipId))
+      await reloadTrees()
+    } catch {
+      setRelationshipError('Не удалось удалить связь.')
     }
   }
 
@@ -535,6 +566,8 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
             onSavePerson={() => void saveSelectedPerson()}
             onCreateRelationship={() => void createRelationship()}
             onDeletePerson={() => void deletePerson(selectedPerson.id)}
+            onOpenConnectedPerson={(personId) => focusPerson(personId, undefined, true)}
+            onDeleteRelationship={(relationshipId) => void deleteRelationship(relationshipId)}
           />
         )}
 
