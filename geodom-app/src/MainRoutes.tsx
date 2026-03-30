@@ -74,9 +74,8 @@ function PageShell({ children }: { children: ReactNode }) {
   return (
     <div className="geodom-page">
       <header className="geodom-header">
-        <Link className="geodom-brand" to="/trees">
-          <TreeLogo />
-          <span>FTree</span>
+        <Link aria-label="FTree" className="geodom-brand" to="/trees">
+          <TreeLogo variant="header" />
         </Link>
 
         <nav className="geodom-nav">
@@ -105,7 +104,7 @@ function PageShell({ children }: { children: ReactNode }) {
 function TreeCard({ tree, href }: { tree: TreeSummary; href: string }) {
   return (
     <Link className="tree-preview-card" to={href}>
-      <div className="tree-preview-card__icon"><TreeLogo /></div>
+      <div className="tree-preview-card__icon"><TreeLogo variant="card" /></div>
       <button className="tree-preview-card__more" type="button" aria-label="Меню дерева" onClick={(event) => event.preventDefault()}>
         <MoreIcon />
       </button>

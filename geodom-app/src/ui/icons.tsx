@@ -1,16 +1,7 @@
-export function TreeLogo() {
+export function TreeLogo({ variant = 'header' }: { variant?: 'header' | 'card' }) {
   return (
-    <span className="geodom-brand__icon">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path
-          d="M12 3.2 6.5 10h2.7l-3 4h2.3l-2.1 3.2h4.6V20a1 1 0 0 0 2 0v-2.8h4.6L15.5 14h2.3l-3-4h2.7Z"
-          fill="none"
-          stroke="currentColor"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth="1.7"
-        />
-      </svg>
+    <span className={`geodom-brand__icon geodom-brand__icon--${variant}`}>
+      <img className={`ftree-logo ftree-logo--${variant}`} src="/logos/logo-medium.png" alt="FTree" />
     </span>
   )
 }

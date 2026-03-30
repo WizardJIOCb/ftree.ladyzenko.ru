@@ -509,25 +509,30 @@ button {
 .geodom-brand {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 0;
   color: #1f2a4d;
   text-decoration: none;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 24px;
-  font-weight: 700;
 }
 
 .geodom-brand__icon {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 12px;
-  background: #3f9969;
-  color: #f7fff8;
+  display: block;
+  line-height: 0;
 }
 
-.geodom-brand__icon svg,
+.geodom-brand__icon--header {
+  width: 156px;
+}
+
+.geodom-brand__icon--card {
+  width: 112px;
+}
+
+.ftree-logo {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 .geodom-nav__link svg,
 .geodom-user__avatar svg,
 .geodom-user__logout svg,
@@ -667,13 +672,10 @@ button {
 }
 
 .tree-preview-card__icon {
-  display: grid;
-  place-items: center;
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  background: #edf4ee;
-  color: #3f9969;
+  display: flex;
+  align-items: center;
+  width: 112px;
+  min-height: 48px;
 }
 
 .tree-preview-card__more {
