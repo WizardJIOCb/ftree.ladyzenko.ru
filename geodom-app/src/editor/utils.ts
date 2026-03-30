@@ -3,6 +3,9 @@ import { MarkerType, type Edge, type Node } from '@xyflow/react'
 import type { CompactPersonNodeData } from '../components/CompactPersonNode'
 import type { TreeEditorRelationship, TreePerson, TreeSummary } from '../types'
 
+const COMPACT_NODE_WIDTH = 144
+const COMPACT_NODE_HEIGHT = 48
+
 export type PersonFormState = {
   firstName: string
   lastName: string
@@ -24,6 +27,8 @@ export function createEditorNodes(persons: TreePerson[], selectedPersonId: strin
     id: person.id,
     type: 'compactPerson',
     position: { x: person.x, y: person.y },
+    initialWidth: COMPACT_NODE_WIDTH,
+    initialHeight: COMPACT_NODE_HEIGHT,
     data: { label: person.label, accent: person.accent, selected: person.id === selectedPersonId },
   }))
 }
