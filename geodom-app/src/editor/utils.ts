@@ -71,11 +71,20 @@ export function createEditorEdges(relationships: TreeEditorRelationship[]): Edge
     target: relationship.target,
     type: 'smoothstep',
     animated: relationship.kind === 'partner',
-    markerEnd: relationship.kind === 'partner' ? undefined : { type: MarkerType.ArrowClosed, color: '#d9d3cd' },
+    markerEnd:
+      relationship.kind === 'partner' || relationship.kind === 'related'
+        ? undefined
+        : { type: MarkerType.ArrowClosed, color: '#d9d3cd' },
     style:
       relationship.kind === 'partner'
         ? { stroke: '#cbb8a8', strokeWidth: 1.4, strokeDasharray: '5 4' }
-        : { stroke: '#d9d3cd', strokeWidth: 1.4 },
+        : relationship.kind === 'related'
+          ? {
+              stroke: relationship.researchStatus === 'hypothesis' ? '#c9b39e' : '#d4c4b8',
+              strokeWidth: 1.2,
+              strokeDasharray: relationship.researchStatus === 'hypothesis' ? '3 5' : '8 5',
+            }
+          : { stroke: '#d9d3cd', strokeWidth: 1.4 },
   }))
 }
 

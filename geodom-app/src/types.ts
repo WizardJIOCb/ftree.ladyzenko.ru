@@ -13,7 +13,7 @@ export type Person = {
   y: number
 }
 
-export type RelationshipKind = 'parent-child' | 'partner'
+export type RelationshipKind = 'parent-child' | 'partner' | 'related'
 
 export type Relationship = {
   id: string
@@ -56,6 +56,8 @@ export type TreeEditorRelationship = {
   source: string
   target: string
   kind: RelationshipKind
+  note: string
+  researchStatus: TreePersonResearchStatus
 }
 
 export type TreeEditorPayload = {

@@ -68,13 +68,17 @@ const updatePersonSchema = z.object({
 const createRelationshipSchema = z.object({
   sourceId: z.string().min(1),
   targetId: z.string().min(1),
-  kind: z.enum(['parent-child', 'partner']),
+  kind: z.enum(['parent-child', 'partner', 'related']),
+  note: z.string().trim().max(2000).optional(),
+  researchStatus: researchStatusSchema.optional(),
 })
 
 const updateRelationshipSchema = z.object({
   sourceId: z.string().min(1),
   targetId: z.string().min(1),
-  kind: z.enum(['parent-child', 'partner']),
+  kind: z.enum(['parent-child', 'partner', 'related']),
+  note: z.string().trim().max(2000).optional(),
+  researchStatus: researchStatusSchema.optional(),
 })
 
 const layoutSchema = z.object({
@@ -131,7 +135,9 @@ function mapRelationship(relationship: typeof treeRelationships.$inferSelect) {
     id: relationship.id,
     source: relationship.sourceId,
     target: relationship.targetId,
-    kind: relationship.kind as 'parent-child' | 'partner',
+    kind: relationship.kind as 'parent-child' | 'partner' | 'related',
+    note: relationship.note,
+    researchStatus: relationship.researchStatus as 'confirmed' | 'in_review' | 'hypothesis',
   }
 }
 
@@ -387,7 +393,7 @@ export async function registerTreeRoutes(app: FastifyInstance) {
     }
 
     const duplicateCondition =
-      body.data.kind === 'partner'
+      body.data.kind === 'partner' || body.data.kind === 'related'
         ? or(
             and(eq(treeRelationships.sourceId, body.data.sourceId), eq(treeRelationships.targetId, body.data.targetId)),
             and(eq(treeRelationships.sourceId, body.data.targetId), eq(treeRelationships.targetId, body.data.sourceId)),
@@ -412,6 +418,8 @@ export async function registerTreeRoutes(app: FastifyInstance) {
         sourceId: body.data.sourceId,
         targetId: body.data.targetId,
         kind: body.data.kind,
+        note: body.data.note ?? '',
+        researchStatus: body.data.researchStatus ?? 'confirmed',
       })
       .returning()
 
@@ -457,7 +465,7 @@ export async function registerTreeRoutes(app: FastifyInstance) {
     }
 
     const duplicateCondition =
-      body.data.kind === 'partner'
+      body.data.kind === 'partner' || body.data.kind === 'related'
         ? or(
             and(eq(treeRelationships.sourceId, body.data.sourceId), eq(treeRelationships.targetId, body.data.targetId)),
             and(eq(treeRelationships.sourceId, body.data.targetId), eq(treeRelationships.targetId, body.data.sourceId)),
@@ -486,6 +494,8 @@ export async function registerTreeRoutes(app: FastifyInstance) {
         sourceId: body.data.sourceId,
         targetId: body.data.targetId,
         kind: body.data.kind,
+        note: body.data.note ?? '',
+        researchStatus: body.data.researchStatus ?? 'confirmed',
       })
       .where(and(eq(treeRelationships.treeId, params.data.treeId), eq(treeRelationships.id, params.data.relationshipId)))
       .returning()

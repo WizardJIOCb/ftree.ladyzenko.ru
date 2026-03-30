@@ -35,6 +35,8 @@ export const treeRelationships = pgTable('tree_relationships', {
   sourceId: text('source_id').notNull(),
   targetId: text('target_id').notNull(),
   kind: text('kind').notNull(),
+  note: text('note').notNull().default(''),
+  researchStatus: text('research_status').notNull().default('confirmed'),
   createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
 })
 

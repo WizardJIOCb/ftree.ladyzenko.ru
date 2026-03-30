@@ -1,8 +1,8 @@
-import type { TreeEditorRelationship, TreePerson, TreeSummary } from '../types'
+import type { TreeEditorRelationship, TreePerson, TreePersonResearchStatus, TreeSummary } from '../types'
 import { CloseIcon, LinkIcon } from '../ui/icons'
 import type { PersonFormState, TreeFormState } from './utils'
 
-export type RelationshipRole = 'parent' | 'child' | 'partner'
+export type RelationshipRole = 'parent' | 'child' | 'partner' | 'related'
 
 type PersonSidebarProps = {
   selectedPerson: TreePerson
@@ -13,17 +13,24 @@ type PersonSidebarProps = {
   linkingRelationship: boolean
   editingRelationshipId: string | null
   relationshipTargets: TreePerson[]
-  relationshipForm: { targetId: string; role: RelationshipRole }
+  relationshipForm: { targetId: string; role: RelationshipRole; note: string; researchStatus: TreePersonResearchStatus }
   selectedConnections: Array<{
     id: string
     kind: TreeEditorRelationship['kind']
     label: string
     role: RelationshipRole
     personId: string
+    note: string
+    researchStatus: TreeEditorRelationship['researchStatus']
   }>
   onClose: () => void
   onPersonFormChange: (patch: Partial<PersonFormState>) => void
-  onRelationshipFormChange: (patch: { targetId?: string; role?: RelationshipRole }) => void
+  onRelationshipFormChange: (patch: {
+    targetId?: string
+    role?: RelationshipRole
+    note?: string
+    researchStatus?: TreePersonResearchStatus
+  }) => void
   onSavePerson: () => void
   onCreateRelationship: () => void
   onDeletePerson: () => void
@@ -160,6 +167,7 @@ export function PersonSidebar(props: PersonSidebarProps) {
             <option value="parent">Родитель для выбранной персоны</option>
             <option value="child">Ребёнок выбранной персоны</option>
             <option value="partner">Партнёр</option>
+            <option value="related">Исследовательская связь</option>
           </select>
         </label>
 
@@ -173,6 +181,28 @@ export function PersonSidebar(props: PersonSidebarProps) {
               </option>
             ))}
           </select>
+        </label>
+
+        <label className="editor-field">
+          <span>Статус связи</span>
+          <select
+            value={props.relationshipForm.researchStatus}
+            onChange={(event) => props.onRelationshipFormChange({ researchStatus: event.target.value as TreePersonResearchStatus })}
+          >
+            <option value="confirmed">Подтверждено</option>
+            <option value="in_review">Проверяется</option>
+            <option value="hypothesis">Гипотеза</option>
+          </select>
+        </label>
+
+        <label className="editor-field">
+          <span>Заметка по связи</span>
+          <textarea
+            rows={3}
+            value={props.relationshipForm.note}
+            onChange={(event) => props.onRelationshipFormChange({ note: event.target.value })}
+            placeholder="Например: вероятный брат по shared-чату, нужно подтвердить актовой записью."
+          />
         </label>
 
         {props.relationshipError && <p className="editor-sidebar__error">{props.relationshipError}</p>}
@@ -197,8 +227,17 @@ export function PersonSidebar(props: PersonSidebarProps) {
                 {item.role === 'partner' && 'Партнёр'}
                 {item.role === 'parent' && 'Родитель'}
                 {item.role === 'child' && 'Ребёнок'}
+                {item.role === 'related' && 'Исследовательская связь'}
               </span>
               <strong>{item.label}</strong>
+              <div className="editor-link-list__meta">
+                <span className={item.researchStatus === 'hypothesis' ? 'editor-link-list__meta--hypothesis' : ''}>
+                  {item.researchStatus === 'confirmed' && 'Подтверждено'}
+                  {item.researchStatus === 'in_review' && 'Проверяется'}
+                  {item.researchStatus === 'hypothesis' && 'Гипотеза'}
+                </span>
+              </div>
+              {item.note && <p className="editor-link-list__note">{item.note}</p>}
               <div className="editor-link-list__actions">
                 <button className="editor-link-list__button" onClick={() => props.onOpenConnectedPerson(item.personId)} type="button">
                   К персоне

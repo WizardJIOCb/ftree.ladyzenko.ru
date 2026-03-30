@@ -57,8 +57,15 @@ export async function bootstrapDatabase() {
       source_id text NOT NULL,
       target_id text NOT NULL,
       kind text NOT NULL,
+      note text NOT NULL DEFAULT '',
+      research_status text NOT NULL DEFAULT 'confirmed',
       created_at timestamp NOT NULL DEFAULT now()
     );
+  `)
+
+  await pool.query(`
+    ALTER TABLE tree_relationships ADD COLUMN IF NOT EXISTS note text NOT NULL DEFAULT '';
+    ALTER TABLE tree_relationships ADD COLUMN IF NOT EXISTS research_status text NOT NULL DEFAULT 'confirmed';
   `)
 
   const [{ value: total }] = await db.select({ value: count() }).from(trees)

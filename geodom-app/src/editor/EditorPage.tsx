@@ -36,9 +36,16 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
   const [relationshipError, setRelationshipError] = useState('')
   const [personForm, setPersonForm] = useState<PersonFormState>(emptyPersonForm)
   const [treeForm, setTreeForm] = useState<TreeFormState>(emptyTreeForm)
-  const [relationshipForm, setRelationshipForm] = useState<{ targetId: string; role: RelationshipRole }>({
+  const [relationshipForm, setRelationshipForm] = useState<{
+    targetId: string
+    role: RelationshipRole
+    note: string
+    researchStatus: TreePerson['researchStatus']
+  }>({
     targetId: '',
     role: 'child',
+    note: '',
+    researchStatus: 'confirmed',
   })
 
   const fallbackTree = trees.find((entry) => entry.id === treeId) ?? null
@@ -55,7 +62,8 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
       .filter((item) => item.source === selectedPersonId || item.target === selectedPersonId)
       .map((item) => {
         const otherId = item.source === selectedPersonId ? item.target : item.source
-        const role: RelationshipRole = item.kind === 'partner' ? 'partner' : item.source === selectedPersonId ? 'child' : 'parent'
+        const role: RelationshipRole =
+          item.kind === 'partner' ? 'partner' : item.kind === 'related' ? 'related' : item.source === selectedPersonId ? 'child' : 'parent'
 
         return {
           id: item.id,
@@ -63,6 +71,8 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
           label: persons.find((person) => person.id === otherId)?.label ?? 'Неизвестная персона',
           role,
           personId: otherId,
+          note: item.note,
+          researchStatus: item.researchStatus,
         }
       })
   }, [persons, relationships, selectedPersonId])
@@ -154,6 +164,8 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
     setRelationshipForm((current) => ({
       role: current.role,
       targetId: relationshipTargets.some((person) => person.id === current.targetId) ? current.targetId : relationshipTargets[0]?.id ?? '',
+      note: current.note,
+      researchStatus: current.researchStatus,
     }))
   }, [relationshipTargets])
 
@@ -382,6 +394,8 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
     setRelationshipForm({
       targetId: connection.personId,
       role: connection.role,
+      note: connection.note,
+      researchStatus: connection.researchStatus,
     })
     setEditingRelationshipId(relationshipId)
     setRelationshipError('')
@@ -393,6 +407,8 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
     setRelationshipForm((current) => ({
       role: current.role,
       targetId: relationshipTargets[0]?.id ?? '',
+      note: '',
+      researchStatus: current.researchStatus,
     }))
   }
 
@@ -405,10 +421,36 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
     try {
       const payload =
         relationshipForm.role === 'parent'
-          ? { sourceId: relationshipForm.targetId, targetId: selectedPerson.id, kind: 'parent-child' as const }
+          ? {
+              sourceId: relationshipForm.targetId,
+              targetId: selectedPerson.id,
+              kind: 'parent-child' as const,
+              note: relationshipForm.note,
+              researchStatus: relationshipForm.researchStatus,
+            }
           : relationshipForm.role === 'child'
-            ? { sourceId: selectedPerson.id, targetId: relationshipForm.targetId, kind: 'parent-child' as const }
-            : { sourceId: selectedPerson.id, targetId: relationshipForm.targetId, kind: 'partner' as const }
+            ? {
+                sourceId: selectedPerson.id,
+                targetId: relationshipForm.targetId,
+                kind: 'parent-child' as const,
+                note: relationshipForm.note,
+                researchStatus: relationshipForm.researchStatus,
+              }
+            : relationshipForm.role === 'partner'
+              ? {
+                  sourceId: selectedPerson.id,
+                  targetId: relationshipForm.targetId,
+                  kind: 'partner' as const,
+                  note: relationshipForm.note,
+                  researchStatus: relationshipForm.researchStatus,
+                }
+              : {
+                  sourceId: selectedPerson.id,
+                  targetId: relationshipForm.targetId,
+                  kind: 'related' as const,
+                  note: relationshipForm.note,
+                  researchStatus: relationshipForm.researchStatus,
+                }
 
       const response = await fetch(
         editingRelationshipId ? `/api/trees/${treeId}/relationships/${editingRelationshipId}` : `/api/trees/${treeId}/relationships`,
@@ -426,6 +468,12 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
         editingRelationshipId ? current.map((item) => (item.id === saved.id ? saved : item)) : [...current, saved],
       )
       setEditingRelationshipId(null)
+      setRelationshipForm((current) => ({
+        role: current.role,
+        targetId: current.targetId,
+        note: '',
+        researchStatus: current.researchStatus,
+      }))
       await reloadTrees()
     } catch {
       setRelationshipError(
