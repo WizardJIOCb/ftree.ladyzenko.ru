@@ -52,6 +52,7 @@ type TreeSidebarProps = {
   savingTree: boolean
   treeError: string
   onClose: () => void
+  onShareTree: () => Promise<void>
   onTreeFormChange: (patch: Partial<TreeFormState>) => void
   onSaveTree: () => void
 }
@@ -521,6 +522,21 @@ export function RelationshipSidebar(props: RelationshipSidebarProps) {
 }
 
 export function TreeSidebar(props: TreeSidebarProps) {
+  const [shareState, setShareState] = useState<'idle' | 'copied' | 'error'>('idle')
+  const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/trees/${props.tree.id}` : `/trees/${props.tree.id}`
+
+  async function copyShareLink() {
+    try {
+      await props.onShareTree()
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable')
+      await navigator.clipboard.writeText(shareUrl)
+      setShareState('copied')
+      window.setTimeout(() => setShareState('idle'), 2400)
+    } catch {
+      setShareState('error')
+    }
+  }
+
   return (
     <aside className="editor-sidebar">
       <div className="editor-sidebar__header">
@@ -561,6 +577,16 @@ export function TreeSidebar(props: TreeSidebarProps) {
           </div>
         </div>
         <p className="editor-sidebar__hint">Последнее обновление: {props.tree.lastUpdated}</p>
+        <div className="editor-share-card">
+          <button className="editor-sidebar__secondary editor-sidebar__secondary--positive" onClick={() => void copyShareLink()} type="button">
+            Поделиться
+          </button>
+          {shareState === 'copied' && <p className="editor-share-card__status">Ссылка скопирована</p>}
+          {shareState === 'error' && <p className="editor-share-card__status editor-share-card__status--error">Не удалось скопировать ссылку</p>}
+          <a className="editor-share-card__link" href={shareUrl} target="_blank" rel="noreferrer">
+            {shareUrl}
+          </a>
+        </div>
         {props.treeError && <p className="editor-sidebar__error">{props.treeError}</p>}
         <button className="editor-sidebar__save" disabled={props.savingTree} onClick={props.onSaveTree} type="button">
           {props.savingTree ? 'Сохраняем...' : 'Сохранить дерево'}

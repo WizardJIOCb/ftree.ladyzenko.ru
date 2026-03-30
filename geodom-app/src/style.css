@@ -1442,6 +1442,30 @@ button {
   font-size: 24px;
 }
 
+.editor-share-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.editor-share-card__status {
+  margin: 0;
+  color: #47704d;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.editor-share-card__status--error {
+  color: #b65d57;
+}
+
+.editor-share-card__link {
+  color: #4f668f;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .editor-link-list {
   display: flex;
   flex-direction: column;

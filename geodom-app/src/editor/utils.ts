@@ -63,7 +63,7 @@ export type EditorViewSettings = {
 export const defaultEditorViewSettings: EditorViewSettings = {
   lineThickness: 1.8,
   showRelationshipLabels: true,
-  autoColorNodes: false,
+  autoColorNodes: true,
 }
 
 type AutoCluster = {

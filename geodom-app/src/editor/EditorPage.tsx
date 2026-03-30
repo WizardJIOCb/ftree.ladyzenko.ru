@@ -693,6 +693,34 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
     }
   }
 
+  async function shareCurrentTree() {
+    if (!treeId || !currentTree) return
+
+    if (currentTree.privacy === 'public') return
+
+    try {
+      const response = await fetch(`/api/trees/${treeId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: currentTree.title,
+          surname: currentTree.surname,
+          privacy: 'public',
+        }),
+      })
+
+      if (!response.ok) throw new Error('Unable to publish tree')
+
+      const updated = (await response.json()) as TreeSummary
+      setEditorTree(updated)
+      setTreeForm((current) => ({ ...current, privacy: 'public' }))
+      void reloadTrees()
+    } catch {
+      setTreeError('Не удалось подготовить публичную ссылку для дерева.')
+      throw new Error('Unable to prepare share link')
+    }
+  }
+
   function startRelationshipEdit(relationshipId: string) {
     const connection = selectedConnections.find((item) => item.id === relationshipId)
     if (!connection) return
@@ -1150,6 +1178,7 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
             savingTree={savingTree}
             treeError={treeError}
             onClose={() => setIsTreePanelOpen(false)}
+            onShareTree={() => shareCurrentTree()}
             onTreeFormChange={(patch) => setTreeForm((current) => ({ ...current, ...patch }))}
             onSaveTree={() => void saveTreeSettings()}
           />
