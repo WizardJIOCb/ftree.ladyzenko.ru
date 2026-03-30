@@ -22,8 +22,6 @@ export const CompactPersonNode = memo(function CompactPersonNode({
     <div className={`modern-node ${accentClassName[data.accent]}${data.selected ? ' is-selected' : ''}`}>
       <Handle className="modern-node__handle" type="target" position={Position.Top} />
       <Handle className="modern-node__handle" type="source" position={Position.Bottom} />
-      <Handle className="modern-node__handle" type="source" position={Position.Left} />
-      <Handle className="modern-node__handle" type="source" position={Position.Right} />
       <span className="modern-node__avatar">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path
