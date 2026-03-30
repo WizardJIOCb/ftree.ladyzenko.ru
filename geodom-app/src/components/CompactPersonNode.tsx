@@ -4,6 +4,7 @@ import { Handle, Position } from '@xyflow/react'
 export type CompactPersonNodeData = {
   label: string
   accent: 'blue' | 'pink' | 'slate'
+  researchStatus: 'confirmed' | 'in_review' | 'hypothesis'
   selected?: boolean
 }
 
@@ -31,6 +32,7 @@ export const CompactPersonNode = memo(function CompactPersonNode({
         </svg>
       </span>
       <span className="modern-node__label">{data.label}</span>
+      <span className={`modern-node__status modern-node__status--${data.researchStatus}`} aria-hidden="true" />
     </div>
   )
 })

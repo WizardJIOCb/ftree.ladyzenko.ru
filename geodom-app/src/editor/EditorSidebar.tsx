@@ -55,12 +55,20 @@ type PersonListSidebarProps = {
 }
 
 export function PersonSidebar(props: PersonSidebarProps) {
+  const statusLabel =
+    props.personForm.researchStatus === 'confirmed'
+      ? 'Подтверждено'
+      : props.personForm.researchStatus === 'in_review'
+        ? 'Проверяется'
+        : 'Гипотеза'
+
   return (
     <aside className="editor-sidebar">
       <div className="editor-sidebar__header">
         <div>
           <span className="editor-sidebar__eyebrow">Персона</span>
           <h3>{props.selectedPerson.label}</h3>
+          <span className={`editor-research-badge editor-research-badge--${props.personForm.researchStatus}`}>{statusLabel}</span>
         </div>
         <button className="editor-sidebar__close" onClick={props.onClose} type="button" aria-label="Закрыть">
           <CloseIcon />
@@ -89,6 +97,17 @@ export function PersonSidebar(props: PersonSidebarProps) {
           <input value={props.personForm.branch} onChange={(event) => props.onPersonFormChange({ branch: event.target.value })} />
         </label>
         <label className="editor-field">
+          <span>Статус проверки</span>
+          <select
+            value={props.personForm.researchStatus}
+            onChange={(event) => props.onPersonFormChange({ researchStatus: event.target.value as TreePerson['researchStatus'] })}
+          >
+            <option value="confirmed">Подтверждено</option>
+            <option value="in_review">Проверяется</option>
+            <option value="hypothesis">Гипотеза</option>
+          </select>
+        </label>
+        <label className="editor-field">
           <span>Цвет карточки</span>
           <select value={props.personForm.accent} onChange={(event) => props.onPersonFormChange({ accent: event.target.value as TreePerson['accent'] })}>
             <option value="blue">Голубой</option>
@@ -97,8 +116,26 @@ export function PersonSidebar(props: PersonSidebarProps) {
           </select>
         </label>
         <label className="editor-field">
+          <span>Варианты имени и фамилии</span>
+          <textarea
+            rows={4}
+            value={props.personForm.aliases}
+            onChange={(event) => props.onPersonFormChange({ aliases: event.target.value })}
+            placeholder="Например: Ладыженко / Лодиженко / Лодыженко"
+          />
+        </label>
+        <label className="editor-field">
           <span>Заметка</span>
           <textarea rows={4} value={props.personForm.note} onChange={(event) => props.onPersonFormChange({ note: event.target.value })} />
+        </label>
+        <label className="editor-field">
+          <span>Источники и доказательства</span>
+          <textarea
+            rows={6}
+            value={props.personForm.sources}
+            onChange={(event) => props.onPersonFormChange({ sources: event.target.value })}
+            placeholder="Сюда удобно складывать архивы, карточки поиска и семейные сведения."
+          />
         </label>
         {props.personError && <p className="editor-sidebar__error">{props.personError}</p>}
         <div className="editor-sidebar__actions">

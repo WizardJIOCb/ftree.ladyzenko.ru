@@ -14,6 +14,9 @@ export type PersonFormState = {
   place: string
   branch: string
   note: string
+  aliases: string
+  sources: string
+  researchStatus: TreePerson['researchStatus']
   accent: TreePerson['accent']
 }
 
@@ -52,7 +55,12 @@ export function createEditorNodes(persons: TreePerson[], selectedPersonId: strin
         height: HANDLE_SIZE,
       },
     ],
-    data: { label: person.label, accent: person.accent, selected: person.id === selectedPersonId },
+    data: {
+      label: person.label,
+      accent: person.accent,
+      researchStatus: person.researchStatus,
+      selected: person.id === selectedPersonId,
+    },
   }))
 }
 
@@ -88,6 +96,9 @@ export const emptyPersonForm: PersonFormState = {
   place: '',
   branch: '',
   note: '',
+  aliases: '',
+  sources: '',
+  researchStatus: 'confirmed',
   accent: 'blue',
 }
 

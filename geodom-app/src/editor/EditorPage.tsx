@@ -132,6 +132,9 @@ export function EditorPage({ trees, reloadTrees }: { trees: TreeSummary[]; reloa
             place: selectedPerson.place,
             branch: selectedPerson.branch,
             note: selectedPerson.note,
+            aliases: selectedPerson.aliases,
+            sources: selectedPerson.sources,
+            researchStatus: selectedPerson.researchStatus,
             accent: selectedPerson.accent,
           }
         : emptyPersonForm,

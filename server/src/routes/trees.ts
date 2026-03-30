@@ -7,6 +7,7 @@ import { treePersons, treeRelationships, trees } from '../db/schema.js'
 
 const treePrivacySchema = z.enum(['private', 'shared', 'public'])
 const accentSchema = z.enum(['blue', 'pink', 'slate'])
+const researchStatusSchema = z.enum(['confirmed', 'in_review', 'hypothesis'])
 
 const createTreeSchema = z.object({
   title: z.string().trim().min(2),
@@ -41,6 +42,9 @@ const createPersonSchema = z.object({
   place: z.string().trim().max(120).optional(),
   branch: z.string().trim().max(120).optional(),
   note: z.string().trim().max(2000).optional(),
+  aliases: z.string().trim().max(2000).optional(),
+  sources: z.string().trim().max(4000).optional(),
+  researchStatus: researchStatusSchema.optional(),
   accent: accentSchema.optional(),
   x: z.number().int().optional(),
   y: z.number().int().optional(),
@@ -53,6 +57,9 @@ const updatePersonSchema = z.object({
   place: z.string().trim().max(120).optional(),
   branch: z.string().trim().max(120).optional(),
   note: z.string().trim().max(2000).optional(),
+  aliases: z.string().trim().max(2000).optional(),
+  sources: z.string().trim().max(4000).optional(),
+  researchStatus: researchStatusSchema.optional(),
   accent: accentSchema.optional(),
   x: z.number().int().optional(),
   y: z.number().int().optional(),
@@ -110,6 +117,9 @@ function mapPerson(person: typeof treePersons.$inferSelect) {
     place: person.place,
     branch: person.branch,
     note: person.note,
+    aliases: person.aliases,
+    sources: person.sources,
+    researchStatus: person.researchStatus as 'confirmed' | 'in_review' | 'hypothesis',
     accent: person.accent as 'blue' | 'pink' | 'slate',
     x: person.x,
     y: person.y,
@@ -246,6 +256,9 @@ export async function registerTreeRoutes(app: FastifyInstance) {
         place: body.data.place ?? '',
         branch: body.data.branch ?? tree.surname,
         note: body.data.note ?? '',
+        aliases: body.data.aliases ?? '',
+        sources: body.data.sources ?? '',
+        researchStatus: body.data.researchStatus ?? 'confirmed',
         accent: body.data.accent ?? accents[tree.members % accents.length],
         x: body.data.x ?? 420 + (tree.members % 2) * 180,
         y: body.data.y ?? 300 + Math.floor(tree.members / 2) * 120,

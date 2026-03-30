@@ -32,6 +32,7 @@ export type TreeSummary = {
 }
 
 export type TreePersonAccent = 'blue' | 'pink' | 'slate'
+export type TreePersonResearchStatus = 'confirmed' | 'in_review' | 'hypothesis'
 
 export type TreePerson = {
   id: string
@@ -42,6 +43,9 @@ export type TreePerson = {
   place: string
   branch: string
   note: string
+  aliases: string
+  sources: string
+  researchStatus: TreePersonResearchStatus
   accent: TreePersonAccent
   x: number
   y: number
