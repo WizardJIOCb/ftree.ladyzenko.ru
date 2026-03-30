@@ -4,6 +4,7 @@ import { Handle, Position } from '@xyflow/react'
 export type CompactPersonNodeData = {
   label: string
   accent: 'blue' | 'pink' | 'slate'
+  selected?: boolean
 }
 
 const accentClassName: Record<CompactPersonNodeData['accent'], string> = {
@@ -18,7 +19,7 @@ export const CompactPersonNode = memo(function CompactPersonNode({
   data: CompactPersonNodeData
 }) {
   return (
-    <div className={`modern-node ${accentClassName[data.accent]}`}>
+    <div className={`modern-node ${accentClassName[data.accent]}${data.selected ? ' is-selected' : ''}`}>
       <Handle className="modern-node__handle" type="target" position={Position.Top} />
       <Handle className="modern-node__handle" type="source" position={Position.Bottom} />
       <Handle className="modern-node__handle" type="source" position={Position.Left} />

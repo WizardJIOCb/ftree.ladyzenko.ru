@@ -1,14 +1,23 @@
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, or, sql } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
 import { db } from '../db/index.js'
 import { treePersons, treeRelationships, trees } from '../db/schema.js'
 
+const treePrivacySchema = z.enum(['private', 'shared', 'public'])
+const accentSchema = z.enum(['blue', 'pink', 'slate'])
+
 const createTreeSchema = z.object({
-  title: z.string().min(2),
-  surname: z.string().min(2),
-  privacy: z.enum(['private', 'shared', 'public']).default('private'),
+  title: z.string().trim().min(2),
+  surname: z.string().trim().min(2),
+  privacy: treePrivacySchema.default('private'),
+})
+
+const updateTreeSchema = z.object({
+  title: z.string().trim().min(2).optional(),
+  surname: z.string().trim().min(2).optional(),
+  privacy: treePrivacySchema.optional(),
 })
 
 const treeParamsSchema = z.object({
@@ -21,17 +30,33 @@ const personParamsSchema = z.object({
 })
 
 const createPersonSchema = z.object({
-  label: z.string().trim().min(1).max(80).optional(),
-  accent: z.enum(['blue', 'pink', 'slate']).optional(),
+  firstName: z.string().trim().max(60).optional(),
+  lastName: z.string().trim().max(60).optional(),
+  years: z.string().trim().max(60).optional(),
+  place: z.string().trim().max(120).optional(),
+  branch: z.string().trim().max(120).optional(),
+  note: z.string().trim().max(2000).optional(),
+  accent: accentSchema.optional(),
   x: z.number().int().optional(),
   y: z.number().int().optional(),
 })
 
 const updatePersonSchema = z.object({
-  label: z.string().trim().min(1).max(80).optional(),
-  accent: z.enum(['blue', 'pink', 'slate']).optional(),
+  firstName: z.string().trim().max(60).optional(),
+  lastName: z.string().trim().max(60).optional(),
+  years: z.string().trim().max(60).optional(),
+  place: z.string().trim().max(120).optional(),
+  branch: z.string().trim().max(120).optional(),
+  note: z.string().trim().max(2000).optional(),
+  accent: accentSchema.optional(),
   x: z.number().int().optional(),
   y: z.number().int().optional(),
+})
+
+const createRelationshipSchema = z.object({
+  sourceId: z.string().min(1),
+  targetId: z.string().min(1),
+  kind: z.enum(['parent-child', 'partner']),
 })
 
 const layoutSchema = z.object({
@@ -43,6 +68,11 @@ const layoutSchema = z.object({
     }),
   ),
 })
+
+function buildPersonLabel(firstName: string, lastName: string, fallback: string) {
+  const fullName = `${firstName} ${lastName}`.trim()
+  return fullName || fallback
+}
 
 function mapTree(tree: typeof trees.$inferSelect) {
   return {
@@ -62,7 +92,13 @@ function mapTree(tree: typeof trees.$inferSelect) {
 function mapPerson(person: typeof treePersons.$inferSelect) {
   return {
     id: person.id,
-    label: person.label,
+    label: buildPersonLabel(person.firstName, person.lastName, person.label),
+    firstName: person.firstName,
+    lastName: person.lastName,
+    years: person.years,
+    place: person.place,
+    branch: person.branch,
+    note: person.note,
     accent: person.accent as 'blue' | 'pink' | 'slate',
     x: person.x,
     y: person.y,
@@ -104,6 +140,36 @@ export async function registerTreeRoutes(app: FastifyInstance) {
       .returning()
 
     return reply.code(201).send(mapTree(created))
+  })
+
+  app.patch('/api/trees/:treeId', async (request, reply) => {
+    const params = treeParamsSchema.safeParse(request.params)
+    const body = updateTreeSchema.safeParse(request.body)
+
+    if (!params.success || !body.success) {
+      return reply.code(400).send({ ok: false, error: 'Invalid payload' })
+    }
+
+    const updates = Object.fromEntries(Object.entries(body.data).filter(([, value]) => value !== undefined))
+
+    if (Object.keys(updates).length === 0) {
+      return reply.code(400).send({ ok: false, error: 'Nothing to update' })
+    }
+
+    const [updated] = await db
+      .update(trees)
+      .set({
+        ...updates,
+        lastUpdated: new Date(),
+      })
+      .where(eq(trees.id, params.data.treeId))
+      .returning()
+
+    if (!updated) {
+      return reply.code(404).send({ ok: false, error: 'Tree not found' })
+    }
+
+    return mapTree(updated)
   })
 
   app.get('/api/trees/:treeId/editor', async (request, reply) => {
@@ -151,13 +217,24 @@ export async function registerTreeRoutes(app: FastifyInstance) {
       return reply.code(404).send({ ok: false, error: 'Tree not found' })
     }
 
+    const nextIndex = tree.members + 1
+    const firstName = body.data.firstName ?? 'Новая'
+    const lastName = body.data.lastName ?? `персона ${nextIndex}`
+    const label = buildPersonLabel(firstName, lastName, `Персона ${nextIndex}`)
     const accents: Array<'blue' | 'pink' | 'slate'> = ['blue', 'pink', 'slate']
+
     const [created] = await db
       .insert(treePersons)
       .values({
         id: crypto.randomUUID(),
         treeId: params.data.treeId,
-        label: body.data.label ?? `Персона ${tree.members + 1}`,
+        label,
+        firstName,
+        lastName,
+        years: body.data.years ?? '',
+        place: body.data.place ?? '',
+        branch: body.data.branch ?? tree.surname,
+        note: body.data.note ?? '',
         accent: body.data.accent ?? accents[tree.members % accents.length],
         x: body.data.x ?? 420 + (tree.members % 2) * 180,
         y: body.data.y ?? 300 + Math.floor(tree.members / 2) * 120,
@@ -183,26 +260,35 @@ export async function registerTreeRoutes(app: FastifyInstance) {
       return reply.code(400).send({ ok: false, error: 'Invalid payload' })
     }
 
-    const updates = Object.fromEntries(
-      Object.entries(body.data).filter(([, value]) => value !== undefined),
-    )
+    const updates = Object.fromEntries(Object.entries(body.data).filter(([, value]) => value !== undefined))
 
     if (Object.keys(updates).length === 0) {
       return reply.code(400).send({ ok: false, error: 'Nothing to update' })
     }
 
+    const [current] = await db
+      .select()
+      .from(treePersons)
+      .where(and(eq(treePersons.treeId, params.data.treeId), eq(treePersons.id, params.data.personId)))
+      .limit(1)
+
+    if (!current) {
+      return reply.code(404).send({ ok: false, error: 'Person not found' })
+    }
+
+    const firstName = typeof updates.firstName === 'string' ? updates.firstName : current.firstName
+    const lastName = typeof updates.lastName === 'string' ? updates.lastName : current.lastName
+    const label = buildPersonLabel(firstName, lastName, current.label)
+
     const [updated] = await db
       .update(treePersons)
       .set({
         ...updates,
+        label,
         updatedAt: new Date(),
       })
       .where(and(eq(treePersons.treeId, params.data.treeId), eq(treePersons.id, params.data.personId)))
       .returning()
-
-    if (!updated) {
-      return reply.code(404).send({ ok: false, error: 'Person not found' })
-    }
 
     await db
       .update(trees)
@@ -212,6 +298,66 @@ export async function registerTreeRoutes(app: FastifyInstance) {
       .where(eq(trees.id, params.data.treeId))
 
     return mapPerson(updated)
+  })
+
+  app.post('/api/trees/:treeId/relationships', async (request, reply) => {
+    const params = treeParamsSchema.safeParse(request.params)
+    const body = createRelationshipSchema.safeParse(request.body)
+
+    if (!params.success || !body.success) {
+      return reply.code(400).send({ ok: false, error: 'Invalid payload' })
+    }
+
+    if (body.data.sourceId === body.data.targetId) {
+      return reply.code(400).send({ ok: false, error: 'Relationship requires two different persons' })
+    }
+
+    const people = await db
+      .select({ id: treePersons.id })
+      .from(treePersons)
+      .where(and(eq(treePersons.treeId, params.data.treeId), inArray(treePersons.id, [body.data.sourceId, body.data.targetId])))
+
+    if (people.length !== 2) {
+      return reply.code(404).send({ ok: false, error: 'Person not found' })
+    }
+
+    const duplicateCondition =
+      body.data.kind === 'partner'
+        ? or(
+            and(eq(treeRelationships.sourceId, body.data.sourceId), eq(treeRelationships.targetId, body.data.targetId)),
+            and(eq(treeRelationships.sourceId, body.data.targetId), eq(treeRelationships.targetId, body.data.sourceId)),
+          )
+        : and(eq(treeRelationships.sourceId, body.data.sourceId), eq(treeRelationships.targetId, body.data.targetId))
+
+    const [existing] = await db
+      .select()
+      .from(treeRelationships)
+      .where(and(eq(treeRelationships.treeId, params.data.treeId), eq(treeRelationships.kind, body.data.kind), duplicateCondition))
+      .limit(1)
+
+    if (existing) {
+      return reply.code(409).send({ ok: false, error: 'Relationship already exists' })
+    }
+
+    const [created] = await db
+      .insert(treeRelationships)
+      .values({
+        id: crypto.randomUUID(),
+        treeId: params.data.treeId,
+        sourceId: body.data.sourceId,
+        targetId: body.data.targetId,
+        kind: body.data.kind,
+      })
+      .returning()
+
+    await db
+      .update(trees)
+      .set({
+        lastUpdated: new Date(),
+      })
+      .where(eq(trees.id, params.data.treeId))
+
+    return reply.code(201).send(mapRelationship(created))
   })
 
   app.post('/api/trees/:treeId/layout', async (request, reply) => {

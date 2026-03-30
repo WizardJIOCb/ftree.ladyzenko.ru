@@ -36,6 +36,12 @@ export type TreePersonAccent = 'blue' | 'pink' | 'slate'
 export type TreePerson = {
   id: string
   label: string
+  firstName: string
+  lastName: string
+  years: string
+  place: string
+  branch: string
+  note: string
   accent: TreePersonAccent
   x: number
   y: number
